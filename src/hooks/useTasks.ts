@@ -39,22 +39,6 @@ export function useTasks() {
   const [isOnline, setIsOnline] = useState(true);
   const abortRef = useRef<AbortController | null>(null);
 
-  useEffect(() => {
-    setIsOnline(navigator.onLine);
-    const handleOnline = async () => {
-      setIsOnline(true);
-      const result = await syncOfflineQueue();
-      if (result.synced > 0) fetchTasks();
-    };
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
   const fetchTasks = useCallback(async (showLoader = true) => {
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
@@ -85,6 +69,22 @@ export function useTasks() {
       setLoading(false);
     }
   }, [filter, sort, order, q, page]);
+
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const handleOnline = async () => {
+      setIsOnline(true);
+      const result = await syncOfflineQueue();
+      if (result.synced > 0) fetchTasks();
+    };
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [fetchTasks]);
 
   useEffect(() => { fetchTasks(); }, [fetchTasks]);
 
