@@ -99,7 +99,7 @@ export default function Home() {
             </li>
           ) : tasks.length === 0 ? (
             <li className="empty-state" style={{ listStyle: 'none' }}>
-              {q ? 'No tasks found.' : filter === 'completed' ? 'No completed tasks yet.' : filter === 'pending' ? 'All done! 🎉' : 'Add your first task above.'}
+              {q ? 'Nenhuma tarefa encontrada.' : filter === 'completed' ? 'Nenhuma tarefa concluída ainda.' : filter === 'pending' ? 'Tudo pronto! 🎉' : 'Adicione sua primeira tarefa acima.'}
             </li>
           ) : (
             tasks.map((task) => (
