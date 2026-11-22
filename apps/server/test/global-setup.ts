@@ -22,4 +22,12 @@ export default async function setup() {
     env: { ...env, DATABASE_URL: url.toString() },
     stdio: "pipe",
   });
+
+  // Start every run from empty boards.
+  const db = createDb(url.toString());
+  try {
+    await db.$executeRawUnsafe("TRUNCATE boards CASCADE");
+  } finally {
+    await db.$disconnect();
+  }
 }

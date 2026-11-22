@@ -1,4 +1,7 @@
 import { z } from "zod";
+import type { RejectCode } from "./decide";
+import type { BoardEvent } from "./events";
+import type { BoardState, ParticipantState } from "./model";
 
 /**
  * Version of the client-server protocol. The server accepts this version and the one before it, so a
@@ -16,3 +19,15 @@ export const healthResponse = z.object({
   protocolVersion: z.number().int(),
 });
 export type HealthResponse = z.infer<typeof healthResponse>;
+
+/** What `POST /api/boards/:id/ops` (and later the WebSocket) answers to an operation. */
+export type OpResult =
+  | { result: "applied"; event: BoardEvent }
+  | { result: "noop"; seq: number }
+  | { result: "rejected"; code: RejectCode; seq: number };
+
+/** `GET /api/boards/:id`: the whole board, and who you are on it. */
+export interface BoardSnapshot {
+  board: BoardState;
+  me: ParticipantState;
+}
