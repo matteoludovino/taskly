@@ -22,7 +22,8 @@ function Message({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function BoardScreen({ boardId }: { boardId: string }) {
-  const { phase, board, me, saving, notices, pending, submit, join, refresh, retry } = useBoard(boardId);
+  const { phase, board, me, connection, online, notices, pending, submit, join, reconnectNow } =
+    useBoard(boardId);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
 
   switch (phase.kind) {
@@ -53,12 +54,23 @@ export function BoardScreen({ boardId }: { boardId: string }) {
       <BoardHeader
         board={board}
         me={me}
-        saving={saving}
+        connection={connection}
+        online={online}
         pending={pending}
         onRename={(title) => submit({ type: "board.rename", title })}
-        onRefresh={refresh}
-        onRetry={retry}
+        onReconnect={reconnectNow}
       />
+      {connection === "outdated" && (
+        <p
+          role="alert"
+          className="flex items-center justify-center gap-3 bg-amber-100 px-4 py-2 text-sm text-amber-950"
+        >
+          Há uma versão nova do Taskly.
+          <button type="button" onClick={() => window.location.reload()} className="font-medium underline">
+            Recarregar
+          </button>
+        </p>
+      )}
       <Kanban board={board} onOp={submit} onOpenCard={setOpenCardId} />
       {openCard && (
         <CardDialog board={board} card={openCard} onOp={submit} onClose={() => setOpenCardId(null)} />

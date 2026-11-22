@@ -3,6 +3,8 @@ import type { NextConfig } from "next";
 // REST goes through /api on the web app's own origin (a rewrite to the server), so the participant cookie
 // is first-party. API_ORIGIN is read at build time.
 const apiOrigin = process.env.API_ORIGIN ?? "http://localhost:8030";
+// Vercel doesn't proxy WebSockets: browsers connect straight to the server (wss:// in production).
+const wsOrigin = process.env.WS_ORIGIN ?? "ws://localhost:8030";
 
 // Pages are prerendered (static shell), so the CSP can't carry a per-request nonce: scripts allow
 // 'unsafe-inline', as the Next.js CSP guide prescribes for that case.
@@ -13,7 +15,7 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' blob: data:",
   "font-src 'self'",
-  "connect-src 'self'",
+  `connect-src 'self' ${wsOrigin}`,
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

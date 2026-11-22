@@ -1,22 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
-  enqueue,
-  localBoard,
-  refresh,
-  settle,
-  uuidv7,
   view,
   type BoardSnapshot,
-  type LocalBoard,
   type Operation,
-  type OpResult,
   type ParticipantState,
   type RejectCode,
 } from "@taskly/shared";
 import { api, ApiFailure } from "./api";
 import { keyFromHash, knownKey, rememberKey } from "./board-keys";
+import { LiveBoard, type LiveState } from "./live-board";
 
 export type Phase =
   | { kind: "loading" }
@@ -25,8 +19,6 @@ export type Phase =
   | { kind: "missing" }
   | { kind: "error"; message: string }
   | { kind: "ready" };
-
-export type Saving = "idle" | "saving" | "failed";
 
 export interface Notice {
   id: number;
@@ -65,25 +57,20 @@ async function fetchBoard(boardId: string): Promise<Loaded> {
   }
 }
 
+const noSubscription = () => () => {};
+const nothing = () => null;
+
 /**
- * A board as this browser sees it. Operations are sent one at a time, in order (a card's creation
- * before its rename), and shown immediately; the server's answers settle them. Other people's changes
- * arrive when the board is refreshed (live updates come with the WebSocket).
+ * A board as this browser sees it: the first snapshot comes over REST (which also tells whether this
+ * browser has joined), then a live connection keeps it current and carries this person's changes.
  */
 export function useBoard(boardId: string) {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
-  const [local, setLocal] = useState<LocalBoard | null>(null);
   const [me, setMe] = useState<ParticipantState | null>(null);
-  const [saving, setSaving] = useState<Saving>("idle");
+  const [live, setLive] = useState<LiveBoard | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
-  const localRef = useRef<LocalBoard | null>(null);
-  const sending = useRef(false);
+  const liveRef = useRef<LiveBoard | null>(null);
   const noticeId = useRef(0);
-
-  const update = useCallback((change: (current: LocalBoard | null) => LocalBoard | null) => {
-    localRef.current = change(localRef.current);
-    setLocal(localRef.current);
-  }, []);
 
   const notify = useCallback((text: string) => {
     const id = ++noticeId.current;
@@ -94,22 +81,31 @@ export function useBoard(boardId: string) {
   const show = useCallback(
     (loaded: Loaded) => {
       switch (loaded.kind) {
-        case "ready":
+        case "ready": {
           setMe(loaded.snapshot.me);
-          update((current) =>
-            current ? refresh(current, loaded.snapshot.board) : localBoard(loaded.snapshot.board),
-          );
+          liveRef.current?.stop();
+          const board = new LiveBoard(boardId, loaded.snapshot.board, {
+            onRejected: (code) => notify(REJECTIONS[code]),
+            // Back through the REST check, which leads to the join screen.
+            onUnauthorized: () =>
+              void fetchBoard(boardId).then((again) =>
+                setPhase(again.kind === "ready" || again.kind === "failed" ? { kind: "no-key" } : again),
+              ),
+          });
+          liveRef.current = board;
+          board.start();
+          setLive(board);
           setPhase({ kind: "ready" });
           return;
+        }
         case "failed":
-          if (localRef.current) notify(loaded.message);
-          else setPhase({ kind: "error", message: loaded.message });
+          setPhase({ kind: "error", message: loaded.message });
           return;
         default:
           setPhase(loaded);
       }
     },
-    [notify, update],
+    [boardId, notify],
   );
 
   const load = useCallback(async () => show(await fetchBoard(boardId)), [boardId, show]);
@@ -119,48 +115,20 @@ export function useBoard(boardId: string) {
     fetchBoard(boardId).then((loaded) => current && show(loaded));
     return () => {
       current = false;
+      liveRef.current?.stop();
+      liveRef.current = null;
     };
   }, [boardId, show]);
 
-  const pump = useCallback(async () => {
-    if (sending.current) return;
-    sending.current = true;
-    try {
-      while (localRef.current && localRef.current.pending.length > 0) {
-        const envelope = localRef.current.pending[0]!;
-        setSaving("saving");
-        let result: OpResult;
-        try {
-          result = await api<OpResult>(`/boards/${boardId}/ops`, { body: envelope });
-        } catch (failure) {
-          if (failure instanceof ApiFailure && failure.status === 400) {
-            // Malformed by our own bug: it will never pass, so don't block what comes after it.
-            update((current) => current && { ...current, pending: current.pending.slice(1) });
-            notify("Uma mudança não pôde ser salva.");
-            continue;
-          }
-          if (failure instanceof ApiFailure && failure.status === 401) await load();
-          setSaving("failed");
-          return;
-        }
-        const settled = settle(localRef.current, envelope.clientOpId, result);
-        update(() => settled.local);
-        if (settled.rejected) notify(REJECTIONS[settled.rejected]);
-        if (settled.stale) await load();
-      }
-      setSaving("idle");
-    } finally {
-      sending.current = false;
-    }
-  }, [boardId, load, notify, update]);
-
-  const submit = useCallback(
-    (op: Operation) => {
-      update((current) => current && enqueue(current, { clientOpId: uuidv7(), op }));
-      void pump();
-    },
-    [pump, update],
+  const state: LiveState | null = useSyncExternalStore(
+    live?.subscribe ?? noSubscription,
+    live?.getSnapshot ?? nothing,
+    nothing,
   );
+
+  const connection = state?.connection;
+
+  const submit = useCallback((op: Operation) => live?.submit(op), [live]);
 
   const join = useCallback(
     async (key: string, name: string, color: string) => {
@@ -171,18 +139,18 @@ export function useBoard(boardId: string) {
     [boardId, load],
   );
 
-  const board = useMemo(() => (local ? view(local, me?.id ?? null) : null), [local, me]);
+  const board = useMemo(() => (state ? view(state.sync, me?.id ?? null) : null), [state, me]);
 
   return {
-    phase,
+    phase: connection === "gone" ? ({ kind: "missing" } as const) : phase,
     board,
     me,
-    saving,
+    connection: connection ?? "connecting",
+    online: state?.online ?? [],
+    pending: state?.sync.pending.length ?? 0,
     notices,
-    pending: local?.pending.length ?? 0,
     submit,
     join,
-    refresh: load,
-    retry: pump,
+    reconnectNow: () => live?.reconnectNow(),
   };
 }

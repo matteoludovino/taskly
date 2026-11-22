@@ -4,30 +4,35 @@ import Link from "next/link";
 import { useState } from "react";
 import type { BoardState, ParticipantState } from "@taskly/shared";
 import { inviteLink, knownKey } from "@/lib/board-keys";
-import type { Saving } from "@/lib/use-board";
+import type { Connection } from "@/lib/live-board";
 import { Avatar } from "./avatar";
 import { InlineEdit } from "./inline-edit";
 
 export function BoardHeader({
   board,
   me,
-  saving,
+  connection,
+  online,
   pending,
   onRename,
-  onRefresh,
-  onRetry,
+  onReconnect,
 }: {
   board: BoardState;
   me: ParticipantState;
-  saving: Saving;
+  connection: Connection;
+  online: string[];
   pending: number;
   onRename: (title: string) => void;
-  onRefresh: () => void;
-  onRetry: () => void;
+  onReconnect: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const key = knownKey(board.id);
-  const participants = Object.values(board.participants);
+  // Who has the board open first; everyone else faded.
+  const isOnline = (id: string) => online.includes(id) || id === me.id;
+  const participants = Object.values(board.participants).sort(
+    (a, b) => Number(isOnline(b.id)) - Number(isOnline(a.id)),
+  );
+  const here = participants.filter((p) => isOnline(p.id)).length;
 
   async function copyInvite() {
     if (!key) return;
@@ -47,20 +52,14 @@ export function BoardHeader({
         </h1>
       </div>
       <div className="flex flex-1 flex-wrap items-center justify-end gap-3 sm:flex-none">
-        <p className="mr-auto text-sm text-zinc-500 sm:mr-0" role="status">
-          {saving === "failed" ? (
-            <button type="button" onClick={onRetry} className="text-red-700 underline">
-              Não foi possível salvar. Tentar de novo
-            </button>
-          ) : saving === "saving" || pending > 0 ? (
-            "Salvando…"
-          ) : (
-            "Tudo salvo"
-          )}
-        </p>
-        <div className="flex -space-x-1" aria-label="Pessoas no quadro">
+        <ConnectionStatus connection={connection} pending={pending} onReconnect={onReconnect} />
+        <div
+          className="flex -space-x-1"
+          role="group"
+          aria-label={`${here} de ${participants.length} ${participants.length === 1 ? "pessoa" : "pessoas"} no quadro agora`}
+        >
           {participants.slice(0, 6).map((p) => (
-            <Avatar key={p.id} participant={p} you={p.id === me.id} />
+            <Avatar key={p.id} participant={p} you={p.id === me.id} away={!isOnline(p.id)} />
           ))}
           {participants.length > 6 && (
             <span className="inline-flex size-8 items-center justify-center rounded-full bg-zinc-200 text-xs ring-2 ring-white">
@@ -68,13 +67,6 @@ export function BoardHeader({
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100"
-        >
-          Atualizar
-        </button>
         {key && (
           <button
             type="button"
@@ -86,5 +78,41 @@ export function BoardHeader({
         )}
       </div>
     </header>
+  );
+}
+
+function ConnectionStatus({
+  connection,
+  pending,
+  onReconnect,
+}: {
+  connection: Connection;
+  pending: number;
+  onReconnect: () => void;
+}) {
+  const waiting =
+    pending > 0 ? ` · ${pending} ${pending === 1 ? "alteração esperando" : "alterações esperando"}` : "";
+  return (
+    <p className="mr-auto flex items-center gap-2 text-sm text-zinc-600 sm:mr-0" role="status">
+      {connection === "live" ? (
+        <>
+          <span aria-hidden className="size-2 rounded-full bg-emerald-600" />
+          {pending > 0 ? "Salvando…" : "Ao vivo"}
+        </>
+      ) : connection === "connecting" ? (
+        <>
+          <span aria-hidden className="size-2 animate-pulse rounded-full bg-amber-500" />
+          Conectando…{waiting}
+        </>
+      ) : (
+        <>
+          <span aria-hidden className="size-2 rounded-full bg-red-600" />
+          Sem conexão{waiting}
+          <button type="button" onClick={onReconnect} className="font-medium text-zinc-900 underline">
+            Tentar agora
+          </button>
+        </>
+      )}
+    </p>
   );
 }
