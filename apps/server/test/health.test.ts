@@ -1,10 +1,10 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { PROTOCOL_VERSION, healthResponse } from "@taskly/shared";
-import { buildApp } from "../src/app.ts";
 import { createDb } from "../src/db.ts";
+import { testApp } from "./support.ts";
 
 const db = createDb(process.env["DATABASE_URL"]!);
-const app = buildApp({ db });
+const app = await testApp(db);
 
 afterAll(async () => {
   await app.close();
@@ -23,7 +23,7 @@ describe("GET /api/health", () => {
 
   it("answers without the database", async () => {
     const offline = createDb("postgresql://nobody:nothing@127.0.0.1:1/none");
-    const isolated = buildApp({ db: offline });
+    const isolated = await testApp(offline);
     const response = await isolated.inject({ method: "GET", url: "/api/health" });
     expect(response.statusCode).toBe(200);
     await isolated.close();

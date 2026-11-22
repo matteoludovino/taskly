@@ -1,7 +1,13 @@
 import { z } from "zod";
 import type { RejectCode } from "./decide";
 import type { BoardEvent } from "./events";
-import type { BoardState, ParticipantState } from "./model";
+import {
+  boardTitle,
+  participantColor,
+  participantName,
+  type BoardState,
+  type ParticipantState,
+} from "./model";
 
 /**
  * Version of the client-server protocol. The server accepts this version and the one before it, so a
@@ -30,4 +36,32 @@ export type OpResult =
 export interface BoardSnapshot {
   board: BoardState;
   me: ParticipantState;
+}
+
+/** `POST /api/boards`: a new board, and its creator as the first participant. */
+export const createBoardRequest = z.object({
+  title: boardTitle,
+  name: participantName,
+  color: participantColor,
+});
+export type CreateBoardRequest = z.infer<typeof createBoardRequest>;
+export interface CreateBoardResponse {
+  boardId: string;
+  /** The secret that lets people in. Only ever travels in the link's #fragment and in POST bodies. */
+  key: string;
+}
+
+/** `POST /api/boards/:id/join`. */
+export const joinBoardRequest = z.object({
+  key: z.string().min(16).max(128),
+  name: participantName,
+  color: participantColor,
+});
+export type JoinBoardRequest = z.infer<typeof joinBoardRequest>;
+
+export const BOARD_ID = /^[A-Za-z0-9]{10}$/;
+
+/** Every API error looks like this; `message` is ready to show (pt-BR). */
+export interface ApiError {
+  error: { code: string; message: string };
 }

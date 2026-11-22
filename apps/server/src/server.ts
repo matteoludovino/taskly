@@ -4,8 +4,11 @@ import { loadEnv } from "./env.ts";
 
 const env = loadEnv();
 const db = createDb(env.DATABASE_URL);
-const app = buildApp({
+const app = await buildApp({
   db,
+  origins: env.WEB_ORIGINS,
+  trustProxy: env.TRUST_PROXY,
+  secureCookies: env.NODE_ENV === "production",
   logger: {
     level: env.LOG_LEVEL,
     // Log the path only: the WebSocket handshake carries its one-time ticket in the query string.
