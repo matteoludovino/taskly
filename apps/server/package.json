@@ -12,7 +12,8 @@
     "test": "vitest run",
     "db:migrate": "prisma migrate deploy",
     "db:migrate:dev": "prisma migrate dev",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "bot": "tsx src/tools/bot.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
