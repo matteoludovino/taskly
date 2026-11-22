@@ -32,6 +32,20 @@ The browser shows its own operations immediately by running the same `decide()` 
 them when the server answers. Moves carry the neighbours seen at drop time, not a position: the server
 computes the final order key, so two people dropping into the same gap still get a clean order.
 
+## Live updates
+
+The browser trades its participant cookie for a one-time ticket (REST, same origin) and opens a WebSocket
+straight to the server. It says `hello` with the last event number it has; inside the board's queue, the
+server sends what it missed (the events since, or a snapshot when that's shorter) and subscribes it, so no
+event can fall between the catch-up and the live stream. From then on everyone receives the same events
+in the same gapless order; the sender also gets an acknowledgement after its own event.
+
+The client applies events strictly in order, holds any that arrive past a gap and asks for the missing ones
+(`pull`) if the gap doesn't close in 1.5 s. After a reconnect it resends its pending operations, which is
+safe because the server answers an already-applied operation with its original event. A property test runs
+three clients against a model server with messages reordered, duplicated and dropped, and checks they all
+converge on the server's board.
+
 ## Running locally
 
 Requirements: Node.js 22.18+, Docker.
@@ -44,18 +58,19 @@ npm run db:migrate -w @taskly/server
 npm run dev                            # server on :8030, web on http://localhost:3020
 ```
 
-| Script                                     | Does                                             |
-| ------------------------------------------ | ------------------------------------------------ |
-| `npm test`                                 | Every package's tests (server tests need the DB) |
-| `npm run lint` / `typecheck` / `build`     | Across all workspaces                            |
-| `npm run format` / `format:check`          | Prettier                                         |
-| `docker build -f apps/server/Dockerfile .` | Server image (applies migrations on start)       |
+| Script                                      | Does                                             |
+| ------------------------------------------- | ------------------------------------------------ |
+| `npm test`                                  | Every package's tests (server tests need the DB) |
+| `npm run lint` / `typecheck` / `build`      | Across all workspaces                            |
+| `npm run format` / `format:check`           | Prettier                                         |
+| `docker build -f apps/server/Dockerfile .`  | Server image (applies migrations on start)       |
+| `npm run bot -w @taskly/server -- "<link>"` | A bot that joins a board and keeps editing it    |
 
 ## Roadmap
 
 1. ✅ Monorepo: Next 16 / Tailwind 4, Fastify server, shared package, Vitest, Compose, CI
 2. ✅ Boards, columns and cards over REST; join by link + name; drag and drop
-3. Real-time core: ordered event log, acknowledgements, gap recovery, presence, reconnection
+3. ✅ Real-time core: ordered event log, acknowledgements, gap recovery, presence, reconnection
 4. Who is editing what; per-field conflicts and a conflict tray
 5. Simultaneous description editing (Yjs)
 6. Live activity history
