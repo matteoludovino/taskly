@@ -19,6 +19,8 @@ const schema = z.object({
     .enum(["true", "false"])
     .default("false")
     .transform((value) => value === "true"),
+  /** The WebSocket address browsers connect to (wss://… in production). */
+  PUBLIC_WS_URL: z.string().default("ws://localhost:8030/ws"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 });
 

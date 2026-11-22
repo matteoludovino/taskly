@@ -9,6 +9,7 @@ const app = await buildApp({
   origins: env.WEB_ORIGINS,
   trustProxy: env.TRUST_PROXY,
   secureCookies: env.NODE_ENV === "production",
+  publicWsUrl: env.PUBLIC_WS_URL,
   logger: {
     level: env.LOG_LEVEL,
     // Log the path only: the WebSocket handshake carries its one-time ticket in the query string.

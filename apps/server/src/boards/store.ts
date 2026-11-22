@@ -20,6 +20,7 @@ export class BoardNotFound extends Error {
 }
 
 type Write = Prisma.PrismaPromise<unknown>;
+export type EventListener = (boardId: string, event: BoardEvent) => void;
 
 function rowFromDb(row: {
   seq: number;
@@ -52,6 +53,7 @@ const isUniqueViolation = (error: unknown) =>
 export class BoardStore {
   private readonly cache = new Map<string, BoardState>();
   private readonly queue = new KeyedQueue();
+  private readonly listeners = new Set<EventListener>();
 
   constructor(
     private readonly db: Db,
@@ -85,6 +87,32 @@ export class BoardStore {
         this.commit(await this.require(boardId), body, actorId, null, extra),
       ),
     );
+  }
+
+  /**
+   * Called with every event right after it's committed, still inside the board's queue: listeners see
+   * events in seq order, and nothing else happens on the board while they run.
+   */
+  onEvent(listener: EventListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * Runs `task` in the board's queue with its current state: no write can land while it runs. Used to
+   * catch a connection up and subscribe it in one step, so no event falls in between.
+   */
+  exclusive<T>(boardId: string, task: (state: BoardState) => Promise<T> | T): Promise<T> {
+    return this.queue.run(boardId, async () => task(await this.require(boardId)));
+  }
+
+  /** The recorded events after `fromSeq`, in order. */
+  async eventsAfter(boardId: string, fromSeq: number): Promise<BoardEvent[]> {
+    const rows = await this.db.boardEvent.findMany({
+      where: { boardId, seq: { gt: fromSeq } },
+      orderBy: { seq: "asc" },
+    });
+    return rows.map(rowFromDb);
   }
 
   /** Forgets a board's in-memory copy; the next access reloads it from the database. */
@@ -137,6 +165,13 @@ export class BoardStore {
     const next = applyEvent(state, event);
     await this.db.$transaction(writesFor(this.db, event, next, extra(this.db)));
     this.remember(state.id, next);
+    for (const listener of this.listeners) {
+      try {
+        listener(state.id, event);
+      } catch {
+        // A broken listener must not undo or block a committed write.
+      }
+    }
     return event;
   }
 

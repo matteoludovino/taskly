@@ -6,6 +6,8 @@ import { registerBoardRoutes } from "./boards/routes.ts";
 import { BoardStore } from "./boards/store.ts";
 import type { Db } from "./db.ts";
 import { HttpError, installErrors } from "./http/errors.ts";
+import { installGateway, type GatewayOptions } from "./realtime/gateway.ts";
+import { Tickets } from "./realtime/tickets.ts";
 
 export interface AppDeps {
   db: Db;
@@ -16,6 +18,9 @@ export interface AppDeps {
   /** Behind the web app's rewrite and the platform's proxy: trust X-Forwarded-For for client IPs. */
   trustProxy?: boolean;
   secureCookies?: boolean;
+  /** Where browsers open the WebSocket (the server's public address). */
+  publicWsUrl?: string;
+  realtime?: Partial<Omit<GatewayOptions, "origins" | "tickets">> & { ticketTtlMs?: number };
 }
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -27,6 +32,8 @@ export async function buildApp({
   logger = false,
   trustProxy = false,
   secureCookies = false,
+  publicWsUrl = "ws://localhost:8030/ws",
+  realtime = {},
 }: AppDeps) {
   const app = Fastify({ logger, trustProxy, bodyLimit: 64 * 1024 });
   app.decorate("db", db);
@@ -52,7 +59,15 @@ export async function buildApp({
     protocolVersion: PROTOCOL_VERSION,
   }));
 
-  registerBoardRoutes(app, { secureCookies });
+  const tickets = new Tickets(realtime.ticketTtlMs);
+  registerBoardRoutes(app, { secureCookies, tickets, publicWsUrl });
+  installGateway(app, store, {
+    origins,
+    tickets,
+    snapshotAfter: realtime.snapshotAfter ?? 500,
+    heartbeatMs: realtime.heartbeatMs ?? 25_000,
+    maxBufferedBytes: realtime.maxBufferedBytes ?? 4 * 1024 * 1024,
+  });
   return app;
 }
 

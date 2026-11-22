@@ -7,10 +7,12 @@ import {
   type CreateBoardResponse,
   type OpResult,
   type ParticipantState,
+  type TicketResponse,
 } from "@taskly/shared";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { z } from "zod";
 import { HttpError, invalid, notFound } from "../http/errors.ts";
+import type { Tickets } from "../realtime/tickets.ts";
 import { createBoard, findParticipant, joinBoard, me, type Membership } from "./access.ts";
 
 const COOKIE = "taskly_participant";
@@ -28,7 +30,10 @@ function boardIdOf(request: FastifyRequest): string {
   return boardId;
 }
 
-export function registerBoardRoutes(app: FastifyInstance, { secureCookies }: { secureCookies: boolean }) {
+export function registerBoardRoutes(
+  app: FastifyInstance,
+  { secureCookies, tickets, publicWsUrl }: { secureCookies: boolean; tickets: Tickets; publicWsUrl: string },
+) {
   const { db, store } = app;
 
   // One cookie per board, scoped to that board's API path: being in several boards just means several
@@ -80,6 +85,18 @@ export function registerBoardRoutes(app: FastifyInstance, { secureCookies }: { s
     if (!board) throw notFound();
     return { board, me: me(board, participant) };
   });
+
+  // Trades the participant cookie (first-party to the web app) for a one-time WebSocket pass.
+  app.post(
+    "/api/boards/:boardId/ticket",
+    { config: { rateLimit: { max: 120, timeWindow: "1 minute" } } },
+    async (request): Promise<TicketResponse> => {
+      const boardId = boardIdOf(request);
+      const participant = await participantOf(request, boardId);
+      const ticket = tickets.issue({ boardId, participantId: participant.id });
+      return { url: `${publicWsUrl}?ticket=${encodeURIComponent(ticket)}` };
+    },
+  );
 
   app.post("/api/boards/:boardId/ops", async (request): Promise<OpResult> => {
     const boardId = boardIdOf(request);
