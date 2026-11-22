@@ -36,6 +36,7 @@ export function CreateBoardForm() {
         Nome do quadro
         <input
           required
+          name="title"
           maxLength={80}
           placeholder="Ex.: Sprint 12, Mudança de casa"
           value={title}

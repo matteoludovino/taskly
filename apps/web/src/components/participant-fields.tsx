@@ -29,6 +29,7 @@ export function ParticipantFields({
         Seu nome
         <input
           required
+          name="name"
           maxLength={40}
           autoComplete="given-name"
           value={name}
@@ -50,7 +51,6 @@ export function ParticipantFields({
                 className="peer sr-only"
               />
               <span
-                title={COLOR_NAMES[value]}
                 className="block size-8 rounded-full ring-offset-2 peer-checked:ring-2 peer-checked:ring-zinc-900 peer-focus-visible:ring-2 peer-focus-visible:ring-zinc-500"
                 style={{ background: value }}
               />
