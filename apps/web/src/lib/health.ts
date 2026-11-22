@@ -1,4 +1,3 @@
-import "./zod-setup";
 import { healthResponse, isSupportedProtocol } from "@taskly/shared";
 
 export type ServerState = "online" | "offline" | "outdated";

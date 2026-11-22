@@ -1,4 +1,3 @@
-import "./zod-setup";
 import type { ApiError } from "@taskly/shared";
 
 export class ApiFailure extends Error {
