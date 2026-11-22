@@ -1,5 +1,3 @@
-// The legacy to-do table. Stage 2 replaces it with boards, columns, cards and the event log.
-
 generator client {
   provider = "prisma-client"
   output   = "../src/generated/prisma"
@@ -15,18 +13,88 @@ enum Priority {
   high
 }
 
-model Task {
-  id          String    @id @default(uuid())
-  title       String    @db.VarChar(255)
-  description String?   @db.Text
-  completed   Boolean   @default(false)
-  priority    Priority  @default(med)
-  dueDate     DateTime? @db.Date
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+/// A board. Its id is public (it's in the link); the key that lets people in is stored hashed only.
+model Board {
+  id             String        @id @db.VarChar(16)
+  keyHash        Bytes
+  title          String        @db.VarChar(80)
+  /// Number of the last event. Incremented in the same transaction as the event it numbers: no gaps.
+  seq            Int           @default(0)
+  createdAt      DateTime      @default(now()) @db.Timestamptz(3)
+  lastActivityAt DateTime      @default(now()) @db.Timestamptz(3)
+  participants   Participant[]
+  columns        Column[]
+  events         BoardEvent[]
 
-  @@index([completed])
-  @@index([priority])
-  @@index([dueDate])
-  @@map("tasks")
+  @@index([lastActivityAt])
+  @@map("boards")
+}
+
+/// Someone who joined a board with a name and a colour. No accounts: a cookie holds their token.
+model Participant {
+  id        String   @id @db.Uuid
+  boardId   String   @db.VarChar(16)
+  board     Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  name      String   @db.VarChar(40)
+  color     String   @db.VarChar(7)
+  tokenHash Bytes    @unique
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([boardId])
+  @@map("participants")
+}
+
+/// Columns and cards have client-minted ids, unique within their board. Positions are order keys
+/// compared byte by byte (COLLATE "C", set in the migration); a deleted row keeps no position.
+model Column {
+  boardId   String    @db.VarChar(16)
+  id        String    @db.Uuid
+  board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  title     String    @db.VarChar(60)
+  position  String?
+  deletedAt DateTime? @db.Timestamptz(3)
+  cards     Card[]
+
+  @@id([boardId, id])
+  @@unique([boardId, position])
+  @@map("columns")
+}
+
+model Card {
+  boardId       String    @db.VarChar(16)
+  id            String    @db.Uuid
+  columnId      String    @db.Uuid
+  column        Column    @relation(fields: [boardId, columnId], references: [boardId, id], onDelete: Cascade)
+  title         String    @db.VarChar(200)
+  priority      Priority  @default(med)
+  dueDate       DateTime? @db.Date
+  completed     Boolean   @default(false)
+  position      String?
+  /// { field: { seq, by } }: who last changed each field, and when in the board's history.
+  fieldVersions Json      @default("{}")
+  deletedAt     DateTime? @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
+
+  @@id([boardId, id])
+  @@unique([boardId, columnId, position])
+  @@map("cards")
+}
+
+/// The board's log: what happened, numbered 1, 2, 3… It replays missed changes to reconnecting clients,
+/// makes resent operations harmless (clientOpId) and feeds the activity history. Never pruned while
+/// the board lives.
+model BoardEvent {
+  boardId    String   @db.VarChar(16)
+  seq        Int
+  board      Board    @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  clientOpId String?  @db.Uuid
+  actorId    String?  @db.Uuid
+  type       String   @db.VarChar(40)
+  payload    Json
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([boardId, seq])
+  @@unique([boardId, clientOpId])
+  @@map("board_events")
 }
