@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # Server tests run against a real PostgreSQL: ordering and idempotency rely on its constraints.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: taskly
+          POSTGRES_PASSWORD: taskly
+          POSTGRES_DB: taskly
+        ports: ["5438:5432"]
+        options: >-
+          --health-cmd "pg_isready -U taskly -d taskly"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://taskly:taskly@localhost:5438/taskly
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm run typecheck
+      # Every schema change ships with its migration.
+      - run: npx prisma migrate deploy && npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --exit-code
+        working-directory: apps/server
+      - run: npm test
+      - run: npm run build
+
+  server-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -f apps/server/Dockerfile -t taskly-server .

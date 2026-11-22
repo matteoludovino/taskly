@@ -1,0 +1,32 @@
+// The legacy to-do table. Stage 2 replaces it with boards, columns, cards and the event log.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Priority {
+  low
+  med
+  high
+}
+
+model Task {
+  id          String    @id @default(uuid())
+  title       String    @db.VarChar(255)
+  description String?   @db.Text
+  completed   Boolean   @default(false)
+  priority    Priority  @default(med)
+  dueDate     DateTime? @db.Date
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([completed])
+  @@index([priority])
+  @@index([dueDate])
+  @@map("tasks")
+}

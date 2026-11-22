@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // The generated Prisma client imports its own files with .ts extensions; esbuild bundles them.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src", "test", "*.ts", "*.mjs"]
+}
