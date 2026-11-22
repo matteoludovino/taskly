@@ -20,6 +20,18 @@ An npm-workspaces monorepo:
 The browser reaches the REST API through a `/api` rewrite on the web app's own origin (first-party cookie)
 and opens the WebSocket straight to the server with a one-time ticket.
 
+## How changes flow
+
+Every change is an **operation** (`card.move`, `card.update`, …) with a client-minted id. The server
+runs it through one write path, per board and in order: it decides what actually happens against the
+current board (`decide()` in `packages/shared`), records the outcome as a numbered **event** (1, 2, 3…
+with no gaps) and updates the rows in the same transaction. Resending an operation returns the original
+event, so retries are harmless.
+
+The browser shows its own operations immediately by running the same `decide()` locally, and settles
+them when the server answers. Moves carry the neighbours seen at drop time, not a position: the server
+computes the final order key, so two people dropping into the same gap still get a clean order.
+
 ## Running locally
 
 Requirements: Node.js 22.18+, Docker.
@@ -42,7 +54,7 @@ npm run dev                            # server on :8030, web on http://localhos
 ## Roadmap
 
 1. ✅ Monorepo: Next 16 / Tailwind 4, Fastify server, shared package, Vitest, Compose, CI
-2. Boards, columns and cards over REST; join by link + name; drag and drop
+2. ✅ Boards, columns and cards over REST; join by link + name; drag and drop
 3. Real-time core: ordered event log, acknowledgements, gap recovery, presence, reconnection
 4. Who is editing what; per-field conflicts and a conflict tray
 5. Simultaneous description editing (Yjs)
