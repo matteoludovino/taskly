@@ -1,6 +1,7 @@
 export * from "./decide";
 export * from "./events";
 export * from "./ids";
+export * from "./local";
 export * from "./model";
 export * from "./ops";
 export * from "./positions";
