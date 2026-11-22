@@ -10,3 +10,5 @@ export * from "./ops";
 export * from "./positions";
 export * from "./protocol";
 export * from "./reduce";
+export * from "./sync";
+export * from "./wire";
