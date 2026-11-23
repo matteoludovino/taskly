@@ -36,6 +36,7 @@ export function BoardScreen({ boardId }: { boardId: string }) {
     setFocus,
     notices,
     pending,
+    waking,
     submit,
     join,
     reconnectNow,
@@ -46,6 +47,13 @@ export function BoardScreen({ boardId }: { boardId: string }) {
   switch (phase.kind) {
     case "loading":
       return <p className="p-6 text-zinc-500">Carregando o quadro…</p>;
+    case "waking":
+      return (
+        <Message title="Acordando o servidor…">
+          O servidor gratuito dorme quando ninguém usa e leva uns 40 segundos para voltar. O quadro abre
+          sozinho assim que ele responder.
+        </Message>
+      );
     case "join":
       return <JoinForm onJoin={(name, color) => join(phase.key, name, color)} />;
     case "no-key":
@@ -72,6 +80,7 @@ export function BoardScreen({ boardId }: { boardId: string }) {
         board={board}
         me={me}
         connection={connection}
+        waking={waking}
         online={online}
         pending={pending}
         onRename={(title) => submit({ type: "board.rename", title })}

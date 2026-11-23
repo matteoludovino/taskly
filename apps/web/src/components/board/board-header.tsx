@@ -12,6 +12,7 @@ export function BoardHeader({
   board,
   me,
   connection,
+  waking,
   online,
   pending,
   onRename,
@@ -21,6 +22,7 @@ export function BoardHeader({
   board: BoardState;
   me: ParticipantState;
   connection: Connection;
+  waking: boolean;
   online: string[];
   pending: number;
   onRename: (title: string) => void;
@@ -55,7 +57,12 @@ export function BoardHeader({
         </h1>
       </div>
       <div className="flex flex-1 flex-wrap items-center justify-end gap-3 sm:flex-none">
-        <ConnectionStatus connection={connection} pending={pending} onReconnect={onReconnect} />
+        <ConnectionStatus
+          connection={connection}
+          waking={waking}
+          pending={pending}
+          onReconnect={onReconnect}
+        />
         <div
           className="flex -space-x-1"
           role="group"
@@ -87,10 +94,12 @@ export function BoardHeader({
 
 function ConnectionStatus({
   connection,
+  waking,
   pending,
   onReconnect,
 }: {
   connection: Connection;
+  waking: boolean;
   pending: number;
   onReconnect: () => void;
 }) {
@@ -102,6 +111,11 @@ function ConnectionStatus({
         <>
           <span aria-hidden className="size-2 rounded-full bg-emerald-600" />
           {pending > 0 ? "Salvando…" : "Ao vivo"}
+        </>
+      ) : waking ? (
+        <>
+          <span aria-hidden className="size-2 animate-pulse rounded-full bg-amber-500" />
+          Acordando o servidor (~40 s)…{waiting}
         </>
       ) : connection === "connecting" ? (
         <>

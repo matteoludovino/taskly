@@ -5,6 +5,7 @@ import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import * as Y from "yjs";
 import type { LiveBoard } from "./live-board";
+import { loadDoc, saveDoc } from "./local-store";
 
 export type DescriptionStatus =
   /** Waiting for the server's copy: not editable yet (the client never seeds content). */
@@ -33,15 +34,20 @@ export class DescriptionDoc {
   private cleanup: (() => void)[] = [];
   private changedClients = new Set<number>();
   private awarenessTimer: ReturnType<typeof setTimeout> | undefined;
+  private saveTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The browser's saved copy has been read (subscribing waits for it). */
+  private ready = false;
+  private destroyed = false;
 
   constructor(
     private readonly live: LiveBoard,
     readonly cardId: string,
     user: { name: string; color: string },
   ) {
-    this.status = live.getSnapshot().connection === "live" ? "loading" : "unavailable";
+    this.status = "loading";
     this.awareness.setLocalStateField("user", user);
     this.doc.on("update", this.onLocalUpdate);
+    this.doc.on("update", this.scheduleSave);
     this.awareness.on("update", this.onAwareness);
     this.cleanup.push(
       live.onBinary((data) => this.receive(data)),
@@ -53,7 +59,38 @@ export class DescriptionDoc {
         }
       }),
     );
+    void this.restore();
+  }
+
+  /**
+   * Starts from this browser's saved copy, if any. A saved copy means the document synced before, so it
+   * can be edited offline too; without one, it waits for the server (the client never seeds content).
+   */
+  private async restore() {
+    const saved = await loadDoc(this.live.boardId, this.cardId);
+    if (this.destroyed) return;
+    if (saved) {
+      Y.applyUpdate(this.doc, saved, this);
+      this.everSynced = true;
+    }
+    this.ready = true;
+    const online = this.live.getSnapshot().connection === "live";
+    // With a saved copy it's editable right away (live: the sync exchanges the difference in a moment).
+    if (this.everSynced) this.setStatus(online ? "synced" : "offline");
+    else this.setStatus(online ? "loading" : "unavailable");
     this.subscribe();
+  }
+
+  /** Saved to the browser shortly after each change, once the document has synced at least once. */
+  private scheduleSave = () => {
+    if (!this.everSynced || this.destroyed) return;
+    clearTimeout(this.saveTimer);
+    this.saveTimer = setTimeout(() => this.saveNow(), 500);
+  };
+
+  private saveNow() {
+    clearTimeout(this.saveTimer);
+    if (this.everSynced) void saveDoc(this.live.boardId, this.cardId, Y.encodeStateAsUpdate(this.doc));
   }
 
   // useSyncExternalStore plumbing.
@@ -69,6 +106,8 @@ export class DescriptionDoc {
   }
 
   destroy(): void {
+    this.destroyed = true;
+    if (this.saveTimer) this.saveNow();
     this.live.sendBinary(encodeFrame(FRAME.unsubscribe, this.cardId));
     clearTimeout(this.awarenessTimer);
     this.cleanup.forEach((stop) => stop());
@@ -82,7 +121,7 @@ export class DescriptionDoc {
   }
 
   private subscribe() {
-    if (typeof this.status === "object") return; // denied: stays closed
+    if (!this.ready || typeof this.status === "object") return; // still reading the saved copy, or denied
     if (!this.live.sendBinary(encodeFrame(FRAME.subscribe, this.cardId))) return;
     if (!this.everSynced) this.setStatus("loading");
     this.sendSync((e) => syncProtocol.writeSyncStep1(e, this.doc));
@@ -141,6 +180,7 @@ export class DescriptionDoc {
         }
         if (kind === syncProtocol.messageYjsSyncStep2) {
           this.everSynced = true;
+          this.scheduleSave();
           this.setStatus("synced");
         }
       }

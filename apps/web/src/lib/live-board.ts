@@ -42,6 +42,8 @@ export interface LiveState {
   online: string[];
   /** What the people on the board are editing or dragging right now. */
   activity: Activity[];
+  /** The first connection is taking long: a free-plan server is probably waking up. */
+  waking: boolean;
 }
 
 export interface LiveCallbacks {
@@ -54,6 +56,7 @@ const GAP_WAIT_MS = 1500;
 const PING_EVERY_MS = 25_000;
 const PING_TIMEOUT_MS = 10_000;
 const MAX_BACKOFF_MS = 30_000;
+const WAKING_AFTER_MS = 3000;
 
 /**
  * Moves messages between a board's WebSocket and the sync engine, and keeps the connection alive:
@@ -75,12 +78,17 @@ export class LiveBoard {
   private liveListeners = new Set<() => void>();
   private eventListeners = new Set<(news: { event: BoardEvent } | { snapshot: true }) => void>();
 
+  private everLive = false;
+  private wakingTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** `initial`: a fresh board, or a whole sync state restored from this browser's storage. */
   constructor(
-    private readonly boardId: string,
-    initial: BoardState,
+    readonly boardId: string,
+    initial: BoardState | SyncState,
     private readonly callbacks: LiveCallbacks = {},
   ) {
-    this.state = { sync: initialSync(initial), connection: "connecting", online: [], activity: [] };
+    const sync = "confirmed" in initial ? { ...initial, ahead: {}, synced: false } : initialSync(initial);
+    this.state = { sync, connection: "connecting", online: [], activity: [], waking: false };
   }
 
   // useSyncExternalStore plumbing.
@@ -94,6 +102,9 @@ export class LiveBoard {
     window.addEventListener("online", this.wakeUp);
     window.addEventListener("offline", this.wentOffline);
     document.addEventListener("visibilitychange", this.wakeUp);
+    this.wakingTimer = setTimeout(() => {
+      if (!this.everLive) this.set({ waking: true });
+    }, WAKING_AFTER_MS);
     void this.open();
   }
 
@@ -103,6 +114,7 @@ export class LiveBoard {
     window.removeEventListener("offline", this.wentOffline);
     document.removeEventListener("visibilitychange", this.wakeUp);
     clearTimeout(this.retryTimer);
+    clearTimeout(this.wakingTimer);
     this.clearConnectionTimers();
     this.ws?.close(1000, "bye");
     this.ws = null;
@@ -232,7 +244,8 @@ export class LiveBoard {
     if (news) this.eventListeners.forEach((listener) => listener(news));
     if (message.t === "synced") {
       this.attempt = 0;
-      this.set({ connection: "live" });
+      this.everLive = true;
+      this.set({ connection: "live", waking: false });
       if (this.focus) this.send({ t: "focus", focus: this.focus });
       this.liveListeners.forEach((listener) => listener());
     }
@@ -269,10 +282,8 @@ export class LiveBoard {
 
   private retryLater() {
     if (this.stopped) return;
-    this.set({
-      connection:
-        this.state.connection === "connecting" && this.attempt === 0 ? "connecting" : "reconnecting",
-    });
+    // Until the first connection succeeds this is still "connecting" (not "lost"): nothing was lost yet.
+    this.set({ connection: this.everLive ? "reconnecting" : "connecting" });
     const ceiling = Math.min(MAX_BACKOFF_MS, 1000 * 2 ** this.attempt);
     this.attempt += 1;
     // Full jitter: a server restart doesn't bring every client back in the same instant.

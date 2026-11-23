@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
+  initialSync,
   view,
   type BoardSnapshot,
+  type SyncState,
   type Focus,
   type Operation,
   type ParticipantState,
@@ -13,9 +15,12 @@ import { api, ApiFailure } from "./api";
 import { keyFromHash, knownKey, rememberKey } from "./board-keys";
 import { addToTray, resolve, trayItemFor, type Resolution, type TrayItem } from "./conflicts";
 import { LiveBoard, type LiveState } from "./live-board";
+import { cleanUp, forgetBoard, holdBoard, loadBoard, saveBoard } from "./local-store";
 
 export type Phase =
   | { kind: "loading" }
+  /** No copy in this browser and the server isn't answering yet (a free-plan server waking up). */
+  | { kind: "waking" }
   | { kind: "join"; key: string }
   | { kind: "no-key" }
   | { kind: "missing" }
@@ -36,28 +41,78 @@ const REJECTIONS: Record<RejectCode, string> = {
   conflict: "Outra pessoa mudou esse campo antes de você.",
 };
 
-type Loaded =
+type Fetched =
   | { kind: "ready"; snapshot: BoardSnapshot }
   | { kind: "join"; key: string }
   | { kind: "no-key" }
   | { kind: "missing" }
   | { kind: "failed"; message: string };
 
-async function fetchBoard(boardId: string): Promise<Loaded> {
-  try {
-    const snapshot = await api<BoardSnapshot>(`/boards/${boardId}`);
-    const key = keyFromHash(window.location.hash);
-    if (key) rememberKey(boardId, key);
-    return { kind: "ready", snapshot };
-  } catch (failure) {
-    const error = failure instanceof ApiFailure ? failure : new ApiFailure(0, "unknown", "Algo deu errado.");
-    if (error.status === 401) {
-      const key = keyFromHash(window.location.hash) ?? knownKey(boardId);
-      return key ? { kind: "join", key } : { kind: "no-key" };
+type Loaded =
+  | Exclude<Fetched, { kind: "ready" }>
+  | { kind: "ready"; sync: SyncState; me: ParticipantState; dropped: number };
+
+const WAKE_FOR_MS = 120_000;
+/**
+ * The server isn't there (yet): no response, a gateway error, or a 500 that didn't come from our API
+ * (ours always carry an error code; a proxy whose upstream is down doesn't).
+ */
+const isWaking = (error: ApiFailure) =>
+  error.status === 0 ||
+  (error.status >= 502 && error.status <= 504) ||
+  (error.status === 500 && error.code === "unknown");
+
+/** The board over REST. A server that doesn't answer yet is given two minutes to wake up. */
+async function fetchBoard(boardId: string, onWaking: () => void = () => {}): Promise<Fetched> {
+  const started = Date.now();
+  for (let delay = 1000; ; delay = Math.min(delay * 2, 8000)) {
+    try {
+      const snapshot = await api<BoardSnapshot>(`/boards/${boardId}`);
+      return { kind: "ready", snapshot };
+    } catch (failure) {
+      const error =
+        failure instanceof ApiFailure ? failure : new ApiFailure(0, "unknown", "Algo deu errado.");
+      if (error.status === 401) {
+        const key = keyFromHash(window.location.hash) ?? knownKey(boardId);
+        return key ? { kind: "join", key } : { kind: "no-key" };
+      }
+      if (error.status === 404) return { kind: "missing" };
+      if (!isWaking(error) || Date.now() - started > WAKE_FOR_MS)
+        return { kind: "failed", message: error.message };
+      onWaking();
+      await new Promise((resolve) => setTimeout(resolve, delay));
     }
-    if (error.status === 404) return { kind: "missing" };
-    return { kind: "failed", message: error.message };
   }
+}
+
+/**
+ * Opens a board: from this browser's saved copy when there is one (shown at once, even offline; the live
+ * connection then catches up from it), otherwise over REST. Operations saved but never confirmed are
+ * kept either way.
+ */
+async function openBoard(boardId: string, onWaking: () => void, { fresh = false } = {}): Promise<Loaded> {
+  const key = keyFromHash(window.location.hash);
+  if (key) rememberKey(boardId, key);
+  const saved = await loadBoard(boardId);
+  // `fresh` (after joining again): the saved copy belongs to the previous identity; keep only its changes.
+  if (saved?.board && !fresh) {
+    const { confirmed, settled, me } = saved.board;
+    return {
+      kind: "ready",
+      sync: { ...initialSync(confirmed), pending: saved.pending, settled },
+      me,
+      dropped: saved.dropped,
+    };
+  }
+  const fetched = await fetchBoard(boardId, onWaking);
+  if (fetched.kind === "missing") await forgetBoard(boardId);
+  if (fetched.kind !== "ready") return fetched;
+  return {
+    kind: "ready",
+    sync: { ...initialSync(fetched.snapshot.board), pending: saved?.pending ?? [] },
+    me: fetched.snapshot.me,
+    dropped: saved?.dropped ?? 0,
+  };
 }
 
 const noSubscription = () => () => {};
@@ -86,20 +141,27 @@ export function useBoard(boardId: string) {
     (loaded: Loaded) => {
       switch (loaded.kind) {
         case "ready": {
-          setMe(loaded.snapshot.me);
+          setMe(loaded.me);
+          if (loaded.dropped > 0) {
+            notify(
+              `${loaded.dropped} alteração(ões) guardada(s) neste navegador não puderam ser recuperadas.`,
+            );
+          }
           liveRef.current?.stop();
-          const board = new LiveBoard(boardId, loaded.snapshot.board, {
+          const board = new LiveBoard(boardId, loaded.sync, {
             // Rejections the person can act on wait in the tray; the rest pass as a notice.
             onRejected: (rejection) => {
               const item = trayItemFor(rejection);
               if (item) setTray((current) => addToTray(current, item));
               else notify(REJECTIONS[rejection.code]);
             },
-            // Back through the REST check, which leads to the join screen.
+            // Back through the REST check, which leads to the join screen. Saved changes stay and go out
+            // after joining again.
             onUnauthorized: () =>
-              void fetchBoard(boardId).then((again) =>
-                setPhase(again.kind === "ready" || again.kind === "failed" ? { kind: "no-key" } : again),
-              ),
+              void fetchBoard(boardId).then((again) => {
+                if (again.kind === "missing") void forgetBoard(boardId);
+                setPhase(again.kind === "ready" || again.kind === "failed" ? { kind: "no-key" } : again);
+              }),
           });
           liveRef.current = board;
           board.start();
@@ -117,17 +179,22 @@ export function useBoard(boardId: string) {
     [boardId, notify],
   );
 
-  const load = useCallback(async () => show(await fetchBoard(boardId)), [boardId, show]);
+  const waking = useCallback(() => setPhase((p) => (p.kind === "loading" ? { kind: "waking" } : p)), []);
+  const load = useCallback(
+    async () => show(await openBoard(boardId, waking, { fresh: true })),
+    [boardId, show, waking],
+  );
 
   useEffect(() => {
     let current = true;
-    fetchBoard(boardId).then((loaded) => current && show(loaded));
+    void cleanUp().catch(() => undefined);
+    openBoard(boardId, () => current && waking()).then((loaded) => current && show(loaded));
     return () => {
       current = false;
       liveRef.current?.stop();
       liveRef.current = null;
     };
-  }, [boardId, show]);
+  }, [boardId, show, waking]);
 
   const state: LiveState | null = useSyncExternalStore(
     live?.subscribe ?? noSubscription,
@@ -136,6 +203,49 @@ export function useBoard(boardId: string) {
   );
 
   const connection = state?.connection;
+
+  // Keep this board in the browser's storage, from one tab at a time: saved shortly after each change,
+  // and right away when the page is hidden or closed.
+  useEffect(() => {
+    if (!live || !me) return;
+    return holdBoard(boardId, () => {
+      let last = live.getSnapshot().sync;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const save = () => void saveBoard(boardId, me, live.getSnapshot().sync);
+      const flush = () => {
+        clearTimeout(timer);
+        save();
+      };
+      const stop = live.subscribe(() => {
+        const { sync } = live.getSnapshot();
+        if (sync === last) return;
+        last = sync;
+        clearTimeout(timer);
+        timer = setTimeout(save, 200);
+      });
+      window.addEventListener("pagehide", flush);
+      save();
+      return () => {
+        stop();
+        window.removeEventListener("pagehide", flush);
+        flush();
+      };
+    });
+  }, [boardId, live, me]);
+
+  // Leaving with changes not yet confirmed: ask first (they're also saved, but may not be sent soon).
+  const pending = state?.sync.pending.length ?? 0;
+  useEffect(() => {
+    if (pending === 0) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [pending]);
+
+  // The board is gone for good: nothing to keep.
+  useEffect(() => {
+    if (connection === "gone") void forgetBoard(boardId);
+  }, [connection, boardId]);
 
   const submit = useCallback((op: Operation) => live?.submit(op), [live]);
 
@@ -176,7 +286,8 @@ export function useBoard(boardId: string) {
     tray,
     settle,
     setFocus,
-    pending: state?.sync.pending.length ?? 0,
+    pending,
+    waking: state?.waking ?? false,
     notices,
     submit,
     join,
