@@ -31,6 +31,7 @@ const REJECTIONS: Record<RejectCode, string> = {
   column_deleted: "Essa coluna foi excluída por outra pessoa.",
   column_not_empty: "Só dá para excluir colunas vazias.",
   exists: "Esse item já existe.",
+  conflict: "Outra pessoa mudou esse campo antes de você.",
 };
 
 type Loaded =

@@ -19,16 +19,27 @@ export const clientMessage = z.discriminatedUnion("t", [
   z.object({ t: z.literal("op"), clientOpId: z.uuid(), op: operation }),
   z.object({ t: z.literal("pull"), fromSeq: z.number().int().nonnegative() }),
   z.object({ t: z.literal("ping") }),
+  /** What this connection is doing right now (shown to the others), or null when nothing. */
+  z.object({
+    t: z.literal("focus"),
+    focus: z.object({ cardId: z.uuid(), mode: z.enum(["editing", "dragging"]) }).nullable(),
+  }),
 ]);
 export type ClientMessage = z.infer<typeof clientMessage>;
+export type Focus = NonNullable<Extract<ClientMessage, { t: "focus" }>["focus"]>;
+
+/** Someone editing or dragging a card. Ephemeral: it lives with the connection. */
+export interface Activity extends Focus {
+  participantId: string;
+}
 
 export type ServerMessage =
   | { t: "snapshot"; board: BoardState }
   | { t: "event"; event: BoardEvent }
   | { t: "ack"; clientOpId: string; result: OpResult }
   | { t: "synced"; seq: number }
-  /** Participant ids with at least one open connection. */
-  | { t: "presence"; online: string[] }
+  /** Participant ids with at least one open connection, and what each connection is doing. */
+  | { t: "presence"; online: string[]; activity: Activity[] }
   | { t: "pong" };
 
 /** WebSocket close codes the client acts on. */

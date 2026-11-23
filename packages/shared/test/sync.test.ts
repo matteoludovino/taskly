@@ -61,12 +61,17 @@ class ModelServer {
           });
           break;
         }
-        const decision = decide(this.state, message.op);
+        const decision = decide(this.state, message.op, `client-${from}`);
         if (decision.kind !== "event") {
           const result =
             decision.kind === "noop"
               ? ({ result: "noop", seq: this.state.seq } as const)
-              : ({ result: "rejected", code: decision.code, seq: this.state.seq } as const);
+              : ({
+                  result: "rejected",
+                  code: decision.code,
+                  seq: this.state.seq,
+                  ...(decision.conflict ? { conflict: decision.conflict } : {}),
+                } as const);
           out[from]!.push({ t: "ack", clientOpId: message.clientOpId, result });
           break;
         }
@@ -126,7 +131,10 @@ const operation: fc.Arbitrary<Operation> = fc.oneof(
     type: fc.constant("card.update" as const),
     cardId: card,
     change: fc.record({ field: fc.constant("title" as const), value: fc.constantFrom("x", "y") }),
+    // Edits based on an old version: same-field edits from different clients conflict.
+    baseSeq: fc.nat({ max: 12 }),
   }),
+  fc.record({ type: fc.constant("card.restore" as const), cardId: card, columnId: col }),
   fc.record({ type: fc.constant("card.delete" as const), cardId: card }),
   fc.record({ type: fc.constant("column.create" as const), columnId: col, title: fc.constant("Nova") }),
   fc.record({ type: fc.constant("column.delete" as const), columnId: col }),
@@ -315,7 +323,7 @@ describe("sync engine", () => {
       result: { result: "rejected", code: "not_found", seq: state.seq },
     };
     const first = receive(submit(initialSync(state), envelope).state, ack);
-    expect(first.rejected).toEqual([{ clientOpId: envelope.clientOpId, code: "not_found" }]);
+    expect(first.rejected).toEqual([{ clientOpId: envelope.clientOpId, code: "not_found", op: envelope.op }]);
     expect(first.state.pending).toEqual([]);
     expect(receive(first.state, ack).rejected).toEqual([]);
   });

@@ -14,7 +14,7 @@ export function run(
   op: Operation,
   actorId = "ana",
 ): { state: BoardState; decision: Decision } {
-  const decision = decide(state, op);
+  const decision = decide(state, op, actorId);
   if (decision.kind !== "event") return { state, decision };
   return { state: applyEvent(state, { ...decision.event, seq: state.seq + 1, actorId }), decision };
 }

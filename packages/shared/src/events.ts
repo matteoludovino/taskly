@@ -31,6 +31,13 @@ export interface EventPayloads {
     toColumnTitle: string;
   };
   "card.deleted": { cardId: string; cardTitle: string; columnId: string };
+  "card.restored": {
+    cardId: string;
+    cardTitle: string;
+    columnId: string;
+    columnTitle: string;
+    position: string;
+  };
 }
 
 export type EventType = keyof EventPayloads;

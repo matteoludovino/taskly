@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { RejectCode } from "./decide";
+import type { FieldConflict, RejectCode } from "./decide";
 import type { BoardEvent } from "./events";
 import {
   boardTitle,
@@ -30,7 +30,7 @@ export type HealthResponse = z.infer<typeof healthResponse>;
 export type OpResult =
   | { result: "applied"; event: BoardEvent }
   | { result: "noop"; seq: number }
-  | { result: "rejected"; code: RejectCode; seq: number };
+  | { result: "rejected"; code: RejectCode; seq: number; conflict?: FieldConflict };
 
 /** `GET /api/boards/:id`: the whole board, and who you are on it. */
 export interface BoardSnapshot {

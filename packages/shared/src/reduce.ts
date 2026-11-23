@@ -102,11 +102,24 @@ export function applyEvent(
     }
 
     case "card.deleted": {
-      const { cardId, cardTitle } = event.payload;
+      const card = state.cards[event.payload.cardId];
+      if (!card) return next;
       return {
         ...next,
-        cards: omit(state.cards, cardId),
-        deletedCards: { ...state.deletedCards, [cardId]: cardTitle },
+        cards: omit(state.cards, card.id),
+        // A deleted card keeps everything but its place: restoring puts it somewhere new.
+        deletedCards: { ...state.deletedCards, [card.id]: { ...card, position: "" } },
+      };
+    }
+
+    case "card.restored": {
+      const card = state.deletedCards[event.payload.cardId];
+      if (!card) return next;
+      const { columnId, position } = event.payload;
+      return {
+        ...next,
+        cards: { ...state.cards, [card.id]: { ...card, columnId, position } },
+        deletedCards: omit(state.deletedCards, card.id),
       };
     }
   }

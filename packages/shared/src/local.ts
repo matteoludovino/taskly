@@ -21,7 +21,7 @@ export function localBoard(confirmed: BoardState): LocalBoard {
 
 export function view({ confirmed, pending }: LocalBoard, actorId: string | null = null): BoardState {
   return pending.reduce((state, { op }) => {
-    const decision = decide(state, op);
+    const decision = decide(state, op, actorId);
     // Provisional: shown, but the board's seq stays at what the server confirmed.
     return decision.kind === "event"
       ? applyEvent(state, { ...decision.event, seq: state.seq, actorId })

@@ -47,6 +47,8 @@ export const operation = z.discriminatedUnion("type", [
     beforeId: neighbour,
   }),
   z.object({ type: z.literal("card.delete"), cardId: id }),
+  /** Brings a deleted card back, at the end of a column. */
+  z.object({ type: z.literal("card.restore"), cardId: id, columnId: id }),
 ]);
 export type Operation = z.infer<typeof operation>;
 export type OperationType = Operation["type"];

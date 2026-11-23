@@ -1,6 +1,6 @@
 import type { EventBody } from "./events";
-import { cardsIn, sortedColumns, type BoardState, type CardState } from "./model";
-import type { Operation } from "./ops";
+import { cardsIn, sortedColumns, type BoardState, type CardField, type CardState } from "./model";
+import type { CardChange, Operation } from "./ops";
 import { keyBetween, resolvePlacement, type Placed } from "./positions";
 
 export type RejectCode =
@@ -13,10 +13,23 @@ export type RejectCode =
   /** Only empty columns can be deleted. */
   | "column_not_empty"
   /** The id is taken. */
-  | "exists";
+  | "exists"
+  /** Someone else changed this field after the version the change was based on. */
+  | "conflict";
+
+/** What the field holds now, and who put it there: enough to let the person choose. */
+export interface FieldConflict {
+  field: CardField;
+  theirs: CardChange["value"];
+  by: string | null;
+  /** The field's current version: a change based on it overrides theirs. */
+  version: number;
+}
 
 export type Decision =
-  { kind: "event"; event: EventBody } | { kind: "noop" } | { kind: "rejected"; code: RejectCode };
+  | { kind: "event"; event: EventBody }
+  | { kind: "noop" }
+  | { kind: "rejected"; code: RejectCode; conflict?: FieldConflict };
 
 const event = (body: EventBody): Decision => ({ kind: "event", event: body });
 const noop: Decision = { kind: "noop" };
@@ -42,9 +55,13 @@ function neighboursOf<T extends Placed>(list: readonly T[], itemId: string) {
 /**
  * Turns an operation into what should happen to the board, without touching it. The server runs it to
  * decide for real; a client runs the same function to show its own change before the server confirms.
- * Precedence: a delete beats a move, which beats a field edit.
+ *
+ * Precedence: a delete beats a move, which beats a field edit. Two edits of the same field conflict only
+ * when the stored value came from someone other than `actorId` after the version the edit was based on
+ * (`baseSeq`); a person's own successive edits never conflict, and setting the value it already has is a
+ * no-op. Moves don't conflict: the last one wins.
  */
-export function decide(state: BoardState, op: Operation): Decision {
+export function decide(state: BoardState, op: Operation, actorId: string | null = null): Decision {
   switch (op.type) {
     case "board.rename":
       if (op.title === state.title) return noop;
@@ -109,8 +126,17 @@ export function decide(state: BoardState, op: Operation): Decision {
     case "card.update": {
       const card = findCard(state, op.cardId);
       if (typeof card === "string") return reject(card);
-      const previous = card[op.change.field];
+      const { field } = op.change;
+      const previous = card[field];
       if (previous === op.change.value) return noop;
+      const version = card.versions[field];
+      if (op.baseSeq !== undefined && version && version.seq > op.baseSeq && version.by !== actorId) {
+        return {
+          kind: "rejected",
+          code: "conflict",
+          conflict: { field, theirs: previous, by: version.by, version: version.seq },
+        };
+      }
       return event({
         type: "card.updated",
         payload: { cardId: card.id, cardTitle: card.title, change: op.change, previous },
@@ -148,6 +174,26 @@ export function decide(state: BoardState, op: Operation): Decision {
       return event({
         type: "card.deleted",
         payload: { cardId: card.id, cardTitle: card.title, columnId: card.columnId },
+      });
+    }
+
+    case "card.restore": {
+      if (state.cards[op.cardId]) return noop;
+      const card = state.deletedCards[op.cardId];
+      if (!card) return reject("not_found");
+      const column = state.columns[op.columnId];
+      if (!column)
+        return reject(state.deletedColumns[op.columnId] !== undefined ? "column_deleted" : "not_found");
+      const position = keyBetween(cardsIn(state, column.id).at(-1)?.position ?? null, null);
+      return event({
+        type: "card.restored",
+        payload: {
+          cardId: card.id,
+          cardTitle: card.title,
+          columnId: column.id,
+          columnTitle: column.title,
+          position,
+        },
       });
     }
   }

@@ -66,9 +66,10 @@ export interface BoardState {
   columns: Record<string, ColumnState>;
   cards: Record<string, CardState>;
   participants: Record<string, ParticipantState>;
-  /** Titles of deleted columns and cards, so a late edit can say what it was about. */
+  /** Titles of deleted columns, so a late change can say what it was about. */
   deletedColumns: Record<string, string>;
-  deletedCards: Record<string, string>;
+  /** Deleted cards as they were, so they can be restored. */
+  deletedCards: Record<string, CardState>;
 }
 
 export function sortedColumns(state: BoardState): ColumnState[] {

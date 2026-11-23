@@ -1,7 +1,7 @@
-import type { RejectCode } from "./decide";
+import type { FieldConflict, RejectCode } from "./decide";
 import type { BoardEvent } from "./events";
 import type { BoardState } from "./model";
-import type { Envelope } from "./ops";
+import type { Envelope, Operation } from "./ops";
 import { PROTOCOL_VERSION } from "./protocol";
 import { applyEvent } from "./reduce";
 import type { ClientMessage, ServerMessage } from "./wire";
@@ -29,10 +29,18 @@ export interface SyncState {
   synced: boolean;
 }
 
+export interface Rejection {
+  clientOpId: string;
+  code: RejectCode;
+  op: Operation;
+  conflict?: FieldConflict;
+}
+
 export interface SyncOutput {
   state: SyncState;
   send: ClientMessage[];
-  rejected: { clientOpId: string; code: RejectCode }[];
+  /** Operations the server turned down, with what's needed to offer a way out. */
+  rejected: Rejection[];
 }
 
 export function initialSync(confirmed: BoardState): SyncState {
@@ -120,9 +128,13 @@ export function receive(state: SyncState, message: ServerMessage): SyncOutput {
     case "ack": {
       const { result, clientOpId } = message;
       if (result.result === "applied") return out(accept(state, result.event));
-      if (!state.pending.some((e) => e.clientOpId === clientOpId)) return out(state);
+      const pending = state.pending.find((e) => e.clientOpId === clientOpId);
+      if (!pending) return out(state);
       const next = advance({ ...state, settled: { ...state.settled, [clientOpId]: result.seq } });
-      return result.result === "rejected" ? out(next, [], [{ clientOpId, code: result.code }]) : out(next);
+      if (result.result !== "rejected") return out(next);
+      const rejection: Rejection = { clientOpId, code: result.code, op: pending.op };
+      if (result.conflict) rejection.conflict = result.conflict;
+      return out(next, [], [rejection]);
     }
 
     case "synced":
