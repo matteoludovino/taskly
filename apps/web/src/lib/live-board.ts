@@ -8,10 +8,12 @@ import {
   receive,
   submit,
   uuidv7,
+  type Activity,
   type BoardState,
   type ClientMessage,
+  type Focus,
   type Operation,
-  type RejectCode,
+  type Rejection,
   type ServerMessage,
   type SyncOutput,
   type SyncState,
@@ -37,10 +39,12 @@ export interface LiveState {
   sync: SyncState;
   connection: Connection;
   online: string[];
+  /** What the people on the board are editing or dragging right now. */
+  activity: Activity[];
 }
 
 export interface LiveCallbacks {
-  onRejected?: (code: RejectCode) => void;
+  onRejected?: (rejection: Rejection) => void;
   /** The participant cookie stopped working (it expired, or the browser dropped it). */
   onUnauthorized?: () => void;
 }
@@ -65,13 +69,14 @@ export class LiveBoard {
   private gapTimer: ReturnType<typeof setTimeout> | undefined;
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   private pongDeadline: ReturnType<typeof setTimeout> | undefined;
+  private focus: Focus | null = null;
 
   constructor(
     private readonly boardId: string,
     initial: BoardState,
     private readonly callbacks: LiveCallbacks = {},
   ) {
-    this.state = { sync: initialSync(initial), connection: "connecting", online: [] };
+    this.state = { sync: initialSync(initial), connection: "connecting", online: [], activity: [] };
   }
 
   // useSyncExternalStore plumbing.
@@ -101,6 +106,13 @@ export class LiveBoard {
 
   submit(op: Operation): void {
     this.run(submit(this.state.sync, { clientOpId: uuidv7(), op }));
+  }
+
+  /** Tells the others what this person is editing or dragging (null: nothing). Resent after reconnects. */
+  setFocus(focus: Focus | null): void {
+    if (JSON.stringify(focus) === JSON.stringify(this.focus)) return;
+    this.focus = focus;
+    if (this.state.connection === "live") this.send({ t: "focus", focus });
   }
 
   /** Try right now instead of waiting for the next scheduled attempt. */
@@ -137,7 +149,7 @@ export class LiveBoard {
   private run(output: SyncOutput) {
     this.set({ sync: output.state });
     for (const message of output.send) this.send(message);
-    for (const { code } of output.rejected) this.callbacks.onRejected?.(code);
+    for (const rejection of output.rejected) this.callbacks.onRejected?.(rejection);
   }
 
   private send(message: ClientMessage) {
@@ -172,8 +184,9 @@ export class LiveBoard {
     if (message.t === "synced") {
       this.attempt = 0;
       this.set({ connection: "live" });
+      if (this.focus) this.send({ t: "focus", focus: this.focus });
     }
-    if (message.t === "presence") this.set({ online: message.online });
+    if (message.t === "presence") this.set({ online: message.online, activity: message.activity ?? [] });
     if (hasGap(this.state.sync)) {
       this.gapTimer ??= setTimeout(() => {
         this.gapTimer = undefined;
@@ -196,7 +209,7 @@ export class LiveBoard {
     if (this.ws !== ws) return;
     this.ws = null;
     this.clearConnectionTimers();
-    this.set({ sync: disconnect(this.state.sync), online: [] });
+    this.set({ sync: disconnect(this.state.sync), online: [], activity: [] });
     if (this.stopped) return;
     if (code === CLOSE.outdated) return this.set({ connection: "outdated" });
     if (code === CLOSE.gone) return this.set({ connection: "gone" });

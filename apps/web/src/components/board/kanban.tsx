@@ -25,7 +25,16 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { useMemo, useState } from "react";
-import { cardsIn, sortedColumns, uuidv7, type BoardState, type Operation } from "@taskly/shared";
+import {
+  cardsIn,
+  sortedColumns,
+  uuidv7,
+  type Activity,
+  type BoardState,
+  type Focus,
+  type Operation,
+} from "@taskly/shared";
+import { ActivityContext, markersByCard } from "./activity";
 import { CardFace } from "./card-tile";
 import { AddColumn, Column } from "./column";
 
@@ -82,13 +91,19 @@ const keyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
 
 export function Kanban({
   board,
+  activity,
   onOp,
   onOpenCard,
+  onFocus,
 }: {
   board: BoardState;
+  /** What other people are editing or dragging. */
+  activity: Activity[];
   onOp: (op: Operation) => void;
   onOpenCard: (id: string) => void;
+  onFocus: (focus: Focus | null) => void;
 }) {
+  const markers = useMemo(() => markersByCard(activity, board), [activity, board]);
   const columns = useMemo(() => sortedColumns(board), [board]);
   const committed = useMemo<Order>(
     () => Object.fromEntries(columns.map((c) => [c.id, cardsIn(board, c.id).map((card) => card.id)])),
@@ -133,7 +148,9 @@ export function Kanban({
   };
 
   function onDragStart({ active }: DragStartEvent) {
-    setDragging({ type: kindOf(active.data) === "column" ? "column" : "card", id: String(active.id) });
+    const type = kindOf(active.data) === "column" ? "column" : "card";
+    setDragging({ type, id: String(active.id) });
+    if (type === "card") onFocus({ cardId: String(active.id), mode: "dragging" });
   }
 
   function onDragOver({ active, over }: DragOverEvent) {
@@ -154,6 +171,7 @@ export function Kanban({
     const current = preview ?? committed;
     setPreview(null);
     setDragging(null);
+    onFocus(null);
     const id = String(active.id);
 
     if (kindOf(active.data) === "column") {
@@ -195,53 +213,56 @@ export function Kanban({
   const draggedColumn = dragging?.type === "column" ? board.columns[dragging.id] : undefined;
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={collisions}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDragEnd={onDragEnd}
-      onDragCancel={() => {
-        setPreview(null);
-        setDragging(null);
-      }}
-      accessibility={{
-        announcements,
-        screenReaderInstructions: {
-          draggable:
-            "Para mover, pressione espaço e use as setas; espaço de novo solta, Escape cancela. Enter abre o cartão.",
-        },
-      }}
-    >
-      <main className="flex flex-1 snap-x scroll-px-4 items-start gap-3 overflow-x-auto p-4">
-        <SortableContext items={columns.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
-          {columns.map((column) => (
-            <Column
-              key={column.id}
-              column={column}
-              cards={(order[column.id] ?? []).map((id) => board.cards[id]!).filter(Boolean)}
-              onOp={onOp}
-              onOpenCard={onOpenCard}
-            />
-          ))}
-        </SortableContext>
-        <AddColumn
-          onAdd={(title) =>
-            onOp({ type: "column.create", columnId: uuidv7(), title, afterId: columns.at(-1)?.id ?? null })
-          }
-        />
-      </main>
-      <DragOverlay>
-        {draggedCard ? (
-          <div className="w-68">
-            <CardFace card={draggedCard} lifted />
-          </div>
-        ) : draggedColumn ? (
-          <div className="w-72 rounded-xl bg-zinc-200 p-3 text-sm font-semibold shadow-lg">
-            {draggedColumn.title}
-          </div>
-        ) : null}
-      </DragOverlay>
-    </DndContext>
+    <ActivityContext value={markers}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={collisions}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => {
+          setPreview(null);
+          setDragging(null);
+          onFocus(null);
+        }}
+        accessibility={{
+          announcements,
+          screenReaderInstructions: {
+            draggable:
+              "Para mover, pressione espaço e use as setas; espaço de novo solta, Escape cancela. Enter abre o cartão.",
+          },
+        }}
+      >
+        <main className="flex flex-1 snap-x scroll-px-4 items-start gap-3 overflow-x-auto p-4">
+          <SortableContext items={columns.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
+            {columns.map((column) => (
+              <Column
+                key={column.id}
+                column={column}
+                cards={(order[column.id] ?? []).map((id) => board.cards[id]!).filter(Boolean)}
+                onOp={onOp}
+                onOpenCard={onOpenCard}
+              />
+            ))}
+          </SortableContext>
+          <AddColumn
+            onAdd={(title) =>
+              onOp({ type: "column.create", columnId: uuidv7(), title, afterId: columns.at(-1)?.id ?? null })
+            }
+          />
+        </main>
+        <DragOverlay>
+          {draggedCard ? (
+            <div className="w-68">
+              <CardFace card={draggedCard} lifted />
+            </div>
+          ) : draggedColumn ? (
+            <div className="w-72 rounded-xl bg-zinc-200 p-3 text-sm font-semibold shadow-lg">
+              {draggedColumn.title}
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+    </ActivityContext>
   );
 }

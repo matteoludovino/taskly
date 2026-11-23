@@ -16,6 +16,7 @@ export function BoardHeader({
   pending,
   onRename,
   onReconnect,
+  children,
 }: {
   board: BoardState;
   me: ParticipantState;
@@ -24,6 +25,8 @@ export function BoardHeader({
   pending: number;
   onRename: (title: string) => void;
   onReconnect: () => void;
+  /** Extra controls (the conflict tray). */
+  children?: React.ReactNode;
 }) {
   const [copied, setCopied] = useState(false);
   const key = knownKey(board.id);
@@ -67,6 +70,7 @@ export function BoardHeader({
             </span>
           )}
         </div>
+        {children}
         {key && (
           <button
             type="button"

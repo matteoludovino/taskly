@@ -3,6 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CardState } from "@taskly/shared";
+import { describe, MarkerTags, useMarkers } from "./activity";
 import { formatDue, isOverdue, PRIORITY_LABEL, PRIORITY_STYLE } from "./card-labels";
 
 export function CardFace({ card, lifted = false }: { card: CardState; lifted?: boolean }) {
@@ -39,6 +40,8 @@ export function CardTile({ card, onOpen }: { card: CardState; onOpen: (id: strin
     id: card.id,
     data: { type: "card", columnId: card.columnId },
   });
+  const markers = useMarkers(card.id);
+  const first = markers[0];
   return (
     <li
       ref={setNodeRef}
@@ -49,7 +52,7 @@ export function CardTile({ card, onOpen }: { card: CardState; onOpen: (id: strin
         {...attributes}
         {...listeners}
         aria-roledescription="cartão arrastável"
-        aria-label={card.title}
+        aria-label={markers.length ? `${card.title}; ${markers.map(describe).join(", ")}` : card.title}
         onClick={() => onOpen(card.id)}
         onKeyDown={(event) => {
           listeners?.onKeyDown?.(event);
@@ -57,7 +60,14 @@ export function CardTile({ card, onOpen }: { card: CardState; onOpen: (id: strin
         }}
         className="cursor-grab rounded-lg focus-visible:ring-2 focus-visible:ring-zinc-900 focus-visible:outline-none active:cursor-grabbing"
       >
-        <CardFace card={card} />
+        <MarkerTags markers={markers} />
+        <div
+          className={`rounded-lg ${first?.mode === "dragging" ? "opacity-60" : ""}`}
+          // Outlined in the colour of whoever is on it.
+          style={first ? { boxShadow: `0 0 0 2px ${first.color}` } : undefined}
+        >
+          <CardFace card={card} />
+        </div>
       </div>
     </li>
   );

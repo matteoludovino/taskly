@@ -4,12 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import {
   view,
   type BoardSnapshot,
+  type Focus,
   type Operation,
   type ParticipantState,
   type RejectCode,
 } from "@taskly/shared";
 import { api, ApiFailure } from "./api";
 import { keyFromHash, knownKey, rememberKey } from "./board-keys";
+import { addToTray, resolve, trayItemFor, type Resolution, type TrayItem } from "./conflicts";
 import { LiveBoard, type LiveState } from "./live-board";
 
 export type Phase =
@@ -70,6 +72,7 @@ export function useBoard(boardId: string) {
   const [me, setMe] = useState<ParticipantState | null>(null);
   const [live, setLive] = useState<LiveBoard | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
+  const [tray, setTray] = useState<TrayItem[]>([]);
   const liveRef = useRef<LiveBoard | null>(null);
   const noticeId = useRef(0);
 
@@ -86,7 +89,12 @@ export function useBoard(boardId: string) {
           setMe(loaded.snapshot.me);
           liveRef.current?.stop();
           const board = new LiveBoard(boardId, loaded.snapshot.board, {
-            onRejected: (code) => notify(REJECTIONS[code]),
+            // Rejections the person can act on wait in the tray; the rest pass as a notice.
+            onRejected: (rejection) => {
+              const item = trayItemFor(rejection);
+              if (item) setTray((current) => addToTray(current, item));
+              else notify(REJECTIONS[rejection.code]);
+            },
             // Back through the REST check, which leads to the join screen.
             onUnauthorized: () =>
               void fetchBoard(boardId).then((again) =>
@@ -142,12 +150,32 @@ export function useBoard(boardId: string) {
 
   const board = useMemo(() => (state ? view(state.sync, me?.id ?? null) : null), [state, me]);
 
+  const settle = useCallback(
+    (item: TrayItem, resolution: Resolution) => {
+      if (board) for (const op of resolve(item, resolution, board)) live?.submit(op);
+      setTray((current) => current.filter((i) => i.id !== item.id));
+    },
+    [board, live],
+  );
+
+  const setFocus = useCallback((focus: Focus | null) => live?.setFocus(focus), [live]);
+
+  // Others' activity only: this person's own tabs don't need a marker.
+  const activity = useMemo(
+    () => (state?.activity ?? []).filter((a) => a.participantId !== me?.id),
+    [state?.activity, me?.id],
+  );
+
   return {
     phase: connection === "gone" ? ({ kind: "missing" } as const) : phase,
     board,
     me,
     connection: connection ?? "connecting",
     online: state?.online ?? [],
+    activity,
+    tray,
+    settle,
+    setFocus,
     pending: state?.sync.pending.length ?? 0,
     notices,
     submit,

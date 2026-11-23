@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useBoard } from "@/lib/use-board";
 import { BoardHeader } from "./board-header";
 import { CardDialog } from "./card-dialog";
+import { ConflictTray } from "./conflict-tray";
 import { JoinForm } from "./join-form";
 import { Kanban } from "./kanban";
 import { Notices } from "./notices";
@@ -22,8 +23,22 @@ function Message({ title, children }: { title: string; children: React.ReactNode
 }
 
 export function BoardScreen({ boardId }: { boardId: string }) {
-  const { phase, board, me, connection, online, notices, pending, submit, join, reconnectNow } =
-    useBoard(boardId);
+  const {
+    phase,
+    board,
+    me,
+    connection,
+    online,
+    activity,
+    tray,
+    settle,
+    setFocus,
+    notices,
+    pending,
+    submit,
+    join,
+    reconnectNow,
+  } = useBoard(boardId);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
 
   switch (phase.kind) {
@@ -59,7 +74,9 @@ export function BoardScreen({ boardId }: { boardId: string }) {
         pending={pending}
         onRename={(title) => submit({ type: "board.rename", title })}
         onReconnect={reconnectNow}
-      />
+      >
+        <ConflictTray items={tray} board={board} onSettle={settle} />
+      </BoardHeader>
       {connection === "outdated" && (
         <p
           role="alert"
@@ -71,9 +88,18 @@ export function BoardScreen({ boardId }: { boardId: string }) {
           </button>
         </p>
       )}
-      <Kanban board={board} onOp={submit} onOpenCard={setOpenCardId} />
+      <Kanban board={board} activity={activity} onOp={submit} onOpenCard={setOpenCardId} onFocus={setFocus} />
       {openCard && (
-        <CardDialog board={board} card={openCard} onOp={submit} onClose={() => setOpenCardId(null)} />
+        <CardDialog
+          board={board}
+          card={openCard}
+          others={activity.filter((a) => a.cardId === openCard.id)}
+          conflicts={tray.filter((item) => "cardId" in item && item.cardId === openCard.id)}
+          onSettle={settle}
+          onOp={submit}
+          onFocus={setFocus}
+          onClose={() => setOpenCardId(null)}
+        />
       )}
       <Notices notices={notices} />
     </div>

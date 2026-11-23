@@ -2,27 +2,37 @@
 
 import { useState } from "react";
 
-/** Text that turns into an input on click; Enter or leaving the field saves, Escape cancels. */
+/**
+ * Text that turns into an input on click; Enter or leaving the field saves, Escape cancels. `version` is
+ * the value's version when editing started; it's handed back on save, so a change made by someone else
+ * in the meantime can be told apart from this person's own.
+ */
 export function InlineEdit({
   value,
   label,
   maxLength,
   onSave,
+  version,
   className = "",
 }: {
   value: string;
   label: string;
   maxLength: number;
-  onSave: (value: string) => void;
+  onSave: (value: string, startedAt: number | undefined) => void;
+  version?: number;
   className?: string;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
+  const [startedAt, setStartedAt] = useState<number | undefined>(undefined);
 
   if (draft === null) {
     return (
       <button
         type="button"
-        onClick={() => setDraft(value)}
+        onClick={() => {
+          setDraft(value);
+          setStartedAt(version);
+        }}
         className={`block max-w-full truncate rounded px-1 text-left hover:bg-zinc-200/60 ${className}`}
         title={`${label}: clique para editar`}
       >
@@ -34,7 +44,7 @@ export function InlineEdit({
   const commit = () => {
     const next = draft.trim();
     setDraft(null);
-    if (next && next !== value) onSave(next);
+    if (next && next !== value) onSave(next, startedAt);
   };
   return (
     <input

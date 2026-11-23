@@ -5,25 +5,43 @@ import {
   cardsIn,
   PRIORITIES,
   sortedColumns,
+  type Activity,
   type BoardState,
   type CardChange,
   type CardState,
+  type Focus,
   type Operation,
   type Priority,
 } from "@taskly/shared";
+import type { Resolution, TrayItem } from "@/lib/conflicts";
 import { PRIORITY_LABEL } from "./card-labels";
+import { CardConflicts } from "./conflict-tray";
 import { InlineEdit } from "./inline-edit";
 
-/** A card's details. Every control saves on its own: one field per operation. */
+/**
+ * A card's details. Every control saves on its own, one field per operation, based on the version of
+ * that field on screen: if someone else changed it in between, the change goes to the conflict tray
+ * instead of silently overwriting theirs.
+ */
 export function CardDialog({
   board,
   card,
+  others,
+  conflicts,
+  onSettle,
   onOp,
+  onFocus,
   onClose,
 }: {
   board: BoardState;
   card: CardState;
+  /** Other people on this card right now. */
+  others: Activity[];
+  /** This card's entries in the conflict tray. */
+  conflicts: TrayItem[];
+  onSettle: (item: TrayItem, resolution: Resolution) => void;
   onOp: (op: Operation) => void;
+  onFocus: (focus: Focus | null) => void;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -33,7 +51,20 @@ export function CardDialog({
     if (!dialog.current?.open) dialog.current?.showModal();
   }, []);
 
-  const change = (value: CardChange) => onOp({ type: "card.update", cardId: card.id, change: value });
+  // Everyone else sees this person on the card while the dialog is open.
+  useEffect(() => {
+    onFocus({ cardId: card.id, mode: "editing" });
+    return () => onFocus(null);
+  }, [card.id, onFocus]);
+
+  const change = (value: CardChange, baseSeq = card.versions[value.field]?.seq) =>
+    onOp({
+      type: "card.update",
+      cardId: card.id,
+      change: value,
+      ...(baseSeq === undefined ? {} : { baseSeq }),
+    });
+  const names = [...new Set(others.map((a) => board.participants[a.participantId]?.name ?? "Alguém"))];
   const column = board.columns[card.columnId];
   const field = "grid gap-1 text-sm font-medium text-zinc-700";
   const control =
@@ -54,7 +85,8 @@ export function CardDialog({
               value={card.title}
               label="Título do cartão"
               maxLength={200}
-              onSave={(title) => change({ field: "title", value: title })}
+              version={card.versions.title?.seq}
+              onSave={(title, startedAt) => change({ field: "title", value: title }, startedAt)}
             />
           </h2>
           <button
@@ -67,6 +99,13 @@ export function CardDialog({
           </button>
         </div>
         <p className="-mt-3 text-sm text-zinc-500">na coluna {column?.title}</p>
+        <CardConflicts items={conflicts} board={board} onSettle={onSettle} />
+        {names.length > 0 && (
+          <p role="status" className="-mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950">
+            {names.join(" e ")} também {names.length > 1 ? "estão" : "está"} com este cartão aberto. Se vocês
+            mudarem o mesmo campo, você escolhe qual valor fica.
+          </p>
+        )}
 
         <label className="flex items-center gap-2 text-sm text-zinc-800">
           <input
