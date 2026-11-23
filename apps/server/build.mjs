@@ -14,7 +14,8 @@ await build({
   target: "node22",
   format: "esm",
   sourcemap: true,
-  external: [...external, "@prisma/client/*"],
+  // Subpath imports too (y-protocols/sync, lib0/encoding…): one copy of each package, from node_modules.
+  external: [...external, ...external.map((name) => `${name}/*`)],
   // ESM output: give bundled CommonJS helpers a require().
   banner: {
     js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
