@@ -50,6 +50,8 @@ export interface CardState {
   completed: boolean;
   position: string;
   versions: Partial<Record<CardField, FieldVersion>>;
+  /** The start of the description (edited together, live, outside the event log); "" when empty. */
+  descriptionPreview: string;
 }
 
 export interface ParticipantState {

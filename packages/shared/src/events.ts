@@ -31,6 +31,8 @@ export interface EventPayloads {
     toColumnTitle: string;
   };
   "card.deleted": { cardId: string; cardTitle: string; columnId: string };
+  /** Someone's edit session on a card's description ended (idle, closed or flushed). */
+  "card.described": { cardId: string; cardTitle: string; preview: string };
   "card.restored": {
     cardId: string;
     cardTitle: string;

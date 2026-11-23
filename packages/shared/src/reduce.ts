@@ -82,6 +82,7 @@ export function applyEvent(
         completed: false,
         position,
         versions,
+        descriptionPreview: "",
       };
       return { ...next, cards: { ...state.cards, [cardId]: card } };
     }
@@ -109,6 +110,15 @@ export function applyEvent(
         cards: omit(state.cards, card.id),
         // A deleted card keeps everything but its place: restoring puts it somewhere new.
         deletedCards: { ...state.deletedCards, [card.id]: { ...card, position: "" } },
+      };
+    }
+
+    case "card.described": {
+      const card = state.cards[event.payload.cardId];
+      if (!card) return next;
+      return {
+        ...next,
+        cards: { ...state.cards, [card.id]: { ...card, descriptionPreview: event.payload.preview } },
       };
     }
 
