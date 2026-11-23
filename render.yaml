@@ -1,0 +1,24 @@
+# Render Blueprint (free plan). Create it from the dashboard: New > Blueprint > this repository.
+# PostgreSQL is external (Neon free plan).
+services:
+  - type: web
+    name: taskly-server
+    runtime: docker
+    plan: free # sleeps after 15 min without traffic; the first request wakes it (~40-60 s)
+    region: virginia # next to the Neon database (aws-us-east-1)
+    dockerContext: . # the image bundles packages/shared too
+    dockerfilePath: ./apps/server/Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false # Neon pooled connection string (host with "-pooler"), ?sslmode=require
+      - key: DIRECT_DATABASE_URL
+        sync: false # Neon direct connection string (no "-pooler"): used by migrations
+      - key: WEB_ORIGINS
+        sync: false # the Vercel URL, e.g. https://taskly-apenas.vercel.app (Origin checks)
+      - key: PUBLIC_WS_URL
+        sync: false # wss://<this service>.onrender.com/ws (where browsers open the socket)
+      - key: TRUST_PROXY
+        value: "true" # behind Render's proxy and the web app's rewrite: real client IPs for limits
+      - key: DEMO_MAX_BOARDS
+        value: "300"
