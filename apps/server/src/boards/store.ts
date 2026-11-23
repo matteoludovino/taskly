@@ -127,9 +127,12 @@ export class BoardStore {
     if (recorded) return { result: "applied", event: rowFromDb(recorded) };
 
     const state = await this.require(boardId);
-    const decision = decide(state, envelope.op);
+    const decision = decide(state, envelope.op, actorId);
     if (decision.kind === "noop") return { result: "noop", seq: state.seq };
-    if (decision.kind === "rejected") return { result: "rejected", code: decision.code, seq: state.seq };
+    if (decision.kind === "rejected") {
+      const { code, conflict } = decision;
+      return { result: "rejected", code, seq: state.seq, ...(conflict ? { conflict } : {}) };
+    }
     const event = await this.commit(state, decision.event, actorId, envelope.clientOpId);
     return { result: "applied", event };
   }

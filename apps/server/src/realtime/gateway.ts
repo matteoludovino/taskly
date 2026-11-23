@@ -6,6 +6,7 @@ import {
   isSupportedProtocol,
   type BoardState,
   type ClientMessage,
+  type Focus,
   type ServerMessage,
 } from "@taskly/shared";
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
@@ -55,6 +56,7 @@ class Session implements Member {
   readonly boardId: string;
   readonly participantId: string;
   alive = true;
+  focus: Focus | null = null;
   private live = false;
   private readonly budget = new Budget(60, 30);
 
@@ -129,7 +131,7 @@ class Session implements Member {
           return rooms.join(this);
         });
         if (newlyOnline) this.gateway.announcePresence(this.boardId);
-        else this.send({ t: "presence", online: rooms.online(this.boardId) });
+        else this.send(this.gateway.presence(this.boardId));
         this.log.info("synced");
         return;
       }
@@ -149,11 +151,18 @@ class Session implements Member {
         return;
       case "ping":
         this.send({ t: "pong" });
+        return;
+      case "focus": {
+        const changed = JSON.stringify(this.focus) !== JSON.stringify(message.focus);
+        this.focus = message.focus;
+        if (changed) this.gateway.announcePresence(this.boardId);
+      }
     }
   }
 
   onClose(code: number): void {
-    if (this.gateway.rooms.leave(this)) this.gateway.announcePresence(this.boardId);
+    // Leaving drops this connection's focus too: tell the others if anything they see changed.
+    if (this.gateway.rooms.leave(this) || this.focus) this.gateway.announcePresence(this.boardId);
     this.log.info({ code }, "websocket closed");
   }
 
@@ -217,8 +226,12 @@ export class Gateway {
     return events.map((event) => ({ t: "event", event }));
   }
 
+  presence(boardId: string): ServerMessage {
+    return { t: "presence", online: this.rooms.online(boardId), activity: this.rooms.activity(boardId) };
+  }
+
   announcePresence(boardId: string): void {
-    this.rooms.broadcast(boardId, { t: "presence", online: this.rooms.online(boardId) });
+    this.rooms.broadcast(boardId, this.presence(boardId));
   }
 
   /** Server shutting down (deploy): tell clients to come right back. */

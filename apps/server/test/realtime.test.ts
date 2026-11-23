@@ -315,3 +315,63 @@ describe("liveness", () => {
     expect((await client.closed).code).toBe(CLOSE.restarting);
   });
 });
+
+describe("who is doing what", () => {
+  it("shows each connection's focus to everyone, and drops it when the connection goes", async () => {
+    const { boardId, key, cookie, me } = await newBoard();
+    const ana = await connect(boardId, cookie, 4);
+    const bruno = await connect(boardId, await join(boardId, key, "Bruno"), 5);
+    const cardId = uuidv7();
+    const from = bruno.received.length;
+    ana.send({ t: "focus", focus: { cardId, mode: "editing" } });
+    const seen = await bruno.until(
+      (m): m is Extract<typeof m, { t: "presence" }> => m.t === "presence" && m.activity.length === 1,
+      from,
+    );
+    expect(seen.activity).toEqual([{ participantId: me.id, cardId, mode: "editing" }]);
+    const after = bruno.received.length;
+    ana.close();
+    const cleared = await bruno.until(
+      (m): m is Extract<typeof m, { t: "presence" }> => m.t === "presence" && m.activity.length === 0,
+      after,
+    );
+    expect(cleared.online).not.toContain(me.id);
+    bruno.close();
+  });
+});
+
+describe("conflicts", () => {
+  it("turn down an edit based on a version someone else changed, saying what's there now", async () => {
+    const { boardId, key, cookie, columns } = await newBoard();
+    const brunoCookie = await join(boardId, key, "Bruno");
+    const cardId = uuidv7();
+    await rest(boardId, cookie, { type: "card.create", cardId, columnId: columns[0]!, title: "Original" }); // seq 6
+    await rest(boardId, brunoCookie, {
+      type: "card.update",
+      cardId,
+      change: { field: "title", value: "Do Bruno" },
+    });
+    const ana = await connect(boardId, cookie, 7);
+    const clientOpId = uuidv7();
+    ana.send({
+      t: "op",
+      clientOpId,
+      op: { type: "card.update", cardId, change: { field: "title", value: "Da Ana" }, baseSeq: 6 },
+    });
+    const ack = await ana.until(is("ack"));
+    const snapshot = (
+      await app.inject({ url: `/api/boards/${boardId}`, headers: headers(brunoCookie) })
+    ).json<BoardSnapshot>();
+    expect(ack).toEqual({
+      t: "ack",
+      clientOpId,
+      result: {
+        result: "rejected",
+        code: "conflict",
+        seq: 7,
+        conflict: { field: "title", theirs: "Do Bruno", by: snapshot.me.id, version: 7 },
+      },
+    });
+    ana.close();
+  });
+});

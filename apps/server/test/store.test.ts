@@ -89,7 +89,7 @@ describe("BoardStore", () => {
     const store = new BoardStore(db);
     const { boardId, columnId: todo } = await boardWithColumn(store);
     const doing = uuidv7();
-    const [a, b, c] = [uuidv7(), uuidv7(), uuidv7()];
+    const [a, b, c, e] = [uuidv7(), uuidv7(), uuidv7(), uuidv7()];
     const ops: Operation[] = [
       { type: "board.rename", title: "Sprint 12" },
       { type: "column.create", columnId: doing, title: "Fazendo" },
@@ -101,6 +101,10 @@ describe("BoardStore", () => {
       { type: "card.update", cardId: b, change: { field: "completed", value: true } },
       { type: "card.move", cardId: a, toColumnId: doing, afterId: null, beforeId: null },
       { type: "card.delete", cardId: c },
+      { type: "card.create", cardId: e, columnId: todo, title: "e" },
+      { type: "card.update", cardId: e, change: { field: "priority", value: "low" } },
+      { type: "card.delete", cardId: e },
+      { type: "card.restore", cardId: e, columnId: doing },
       { type: "column.move", columnId: doing, afterId: null, beforeId: todo },
       { type: "column.rename", columnId: todo, title: "Backlog" },
     ];
@@ -112,7 +116,8 @@ describe("BoardStore", () => {
     expect(sortedColumns(fromDb!).map((col) => col.title)).toEqual(["Fazendo", "Backlog"]);
     expect(cardsIn(fromDb!, todo).map((card) => card.title)).toEqual(["b"]);
     expect(fromDb!.cards[a]).toMatchObject({ columnId: doing, priority: "high", dueDate: "2026-12-24" });
-    expect(fromDb!.deletedCards).toEqual({ [c]: "c" });
+    expect(Object.keys(fromDb!.deletedCards)).toEqual([c]);
+    expect(fromDb!.deletedCards[c]).toMatchObject({ title: "c", position: "" });
   });
 
   it("recovers when another writer took the next number", async () => {

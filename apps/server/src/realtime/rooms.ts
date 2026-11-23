@@ -1,8 +1,10 @@
-import type { ServerMessage } from "@taskly/shared";
+import type { Activity, Focus, ServerMessage } from "@taskly/shared";
 
 export interface Member {
   readonly boardId: string;
   readonly participantId: string;
+  /** What this connection is doing (editing or dragging a card), if anything. */
+  readonly focus: Focus | null;
   sendRaw(data: string): void;
 }
 
@@ -29,6 +31,13 @@ export class Rooms {
 
   online(boardId: string): string[] {
     return [...new Set([...(this.boards.get(boardId) ?? [])].map((m) => m.participantId))];
+  }
+
+  /** Every connection's current focus (a person with two tabs may show up twice). */
+  activity(boardId: string): Activity[] {
+    return [...(this.boards.get(boardId) ?? [])].flatMap((m) =>
+      m.focus ? [{ participantId: m.participantId, ...m.focus }] : [],
+    );
   }
 
   /** Serialized once, sent to every member, in call order. */

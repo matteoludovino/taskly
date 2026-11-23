@@ -40,20 +40,18 @@ export async function loadBoard(db: Db, boardId: string): Promise<BoardState | n
     else state.columns[c.id] = { id: c.id, title: c.title, position: c.position };
   }
   for (const c of cards) {
-    if (c.deletedAt || c.position === null) {
-      state.deletedCards[c.id] = c.title;
-      continue;
-    }
-    state.cards[c.id] = {
+    const card = {
       id: c.id,
       columnId: c.columnId,
       title: c.title,
       priority: c.priority as Priority,
       dueDate: toIsoDate(c.dueDate),
       completed: c.completed,
-      position: c.position,
+      position: c.position ?? "",
       versions: versions(c.fieldVersions),
     };
+    if (c.deletedAt || c.position === null) state.deletedCards[c.id] = card;
+    else state.cards[c.id] = card;
   }
   return state;
 }

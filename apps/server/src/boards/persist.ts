@@ -84,6 +84,16 @@ export function writesFor(db: Db, event: BoardEvent, next: BoardState, extra: Wr
         }),
       );
       break;
+    case "card.restored": {
+      const c = next.cards[event.payload.cardId]!;
+      writes.push(
+        db.card.update({
+          where: { boardId_id: { boardId, id: c.id } },
+          data: { deletedAt: null, columnId: c.columnId, position: c.position },
+        }),
+      );
+      break;
+    }
     case "board.renamed":
     case "participant.joined":
       break;
