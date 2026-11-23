@@ -56,6 +56,19 @@ put it. The change then waits in a **conflict tray** with "keep mine" (the same 
 version) or "keep theirs". A delete beats an edit or a move, and the tray offers to restore the card with
 the change applied. Who is editing or dragging which card is shown live, so most conflicts never happen.
 
+## Writing descriptions together
+
+A card's description is a [Yjs](https://yjs.dev) document (a CRDT), edited with TipTap: concurrent typing
+merges character by character, with everyone's cursor shown. Its updates travel as binary frames on the
+board's WebSocket, multiplexed by card id, separate from the operation log (no event per keystroke).
+
+The server keeps open documents in memory, relays updates and cursors, and never drops an update: one past
+the size guard closes that subscription with a reason instead. Saving is debounced and always **merges**
+with what's stored (`SELECT … FOR UPDATE` + `Y.mergeUpdates`), so two server processes saving the same card
+both keep their changes. On shutdown every open document is saved before clients are told to reconnect.
+When someone stops typing for 30 seconds (or closes the card), the edit session becomes one history event
+with a preview of the text.
+
 ## Running locally
 
 Requirements: Node.js 22.18+, Docker.
@@ -82,7 +95,7 @@ npm run dev                            # server on :8030, web on http://localhos
 2. ✅ Boards, columns and cards over REST; join by link + name; drag and drop
 3. ✅ Real-time core: ordered event log, acknowledgements, gap recovery, presence, reconnection
 4. ✅ Who is editing what; per-field conflicts and a conflict tray
-5. Simultaneous description editing (Yjs)
+5. ✅ Simultaneous description editing (Yjs)
 6. Live activity history
 7. Offline: pending changes and documents survive a reload
 8. Per-visitor demo boards with a simulated teammate, end-to-end tests, deploy
