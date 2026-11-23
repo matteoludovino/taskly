@@ -96,7 +96,7 @@ npm run dev                            # server on :8030, web on http://localhos
 3. ✅ Real-time core: ordered event log, acknowledgements, gap recovery, presence, reconnection
 4. ✅ Who is editing what; per-field conflicts and a conflict tray
 5. ✅ Simultaneous description editing (Yjs)
-6. Live activity history
+6. ✅ Live activity history
 7. Offline: pending changes and documents survive a reload
 8. Per-visitor demo boards with a simulated teammate, end-to-end tests, deploy
 
