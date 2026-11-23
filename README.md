@@ -69,6 +69,14 @@ both keep their changes. On shutdown every open document is saved before clients
 When someone stops typing for 30 seconds (or closes the card), the edit session becomes one history event
 with a preview of the text.
 
+## Offline
+
+Each board's confirmed state, pending operations and description documents are kept in IndexedDB (one
+versioned database; only one tab per board writes, coordinated with Web Locks). Reopening a board shows it
+at once, even with no network; when the connection comes back, the client catches up from its last event
+and resends what was pending, and descriptions edited offline merge through their CRDT. Opening the app
+with no network at all (a service worker) is the natural next step.
+
 ## Running locally
 
 Requirements: Node.js 22.18+, Docker.
@@ -97,7 +105,7 @@ npm run dev                            # server on :8030, web on http://localhos
 4. ✅ Who is editing what; per-field conflicts and a conflict tray
 5. ✅ Simultaneous description editing (Yjs)
 6. ✅ Live activity history
-7. Offline: pending changes and documents survive a reload
+7. ✅ Offline: pending changes and documents survive a reload
 8. Per-visitor demo boards with a simulated teammate, end-to-end tests, deploy
 
 ## History
