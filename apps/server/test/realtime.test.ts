@@ -166,7 +166,10 @@ describe("catching up", () => {
     client.hello(4);
     await writes;
     await client.until((m): m is never => m.t === "event" && m.event.seq === 34);
-    expect(client.eventSeqs()).toEqual(Array.from({ length: 30 }, (_, i) => i + 5));
+    // Caught up either with events or (if many writes landed first) a snapshot; then live. Either way the
+    // client ends up with every event exactly once, in order, with no gap.
+    const from = client.received.find(is("snapshot"))?.board.seq ?? 4;
+    expect(client.eventSeqs()).toEqual(Array.from({ length: 34 - from }, (_, i) => i + from + 1));
     client.close();
   });
 
