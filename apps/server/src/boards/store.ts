@@ -106,6 +106,16 @@ export class BoardStore {
     return this.queue.run(boardId, async () => task(await this.require(boardId)));
   }
 
+  /** Up to `limit` recorded events before `beforeSeq` (or the latest ones), newest first. */
+  async eventsBefore(boardId: string, beforeSeq: number | undefined, limit: number): Promise<BoardEvent[]> {
+    const rows = await this.db.boardEvent.findMany({
+      where: { boardId, ...(beforeSeq === undefined ? {} : { seq: { lt: beforeSeq } }) },
+      orderBy: { seq: "desc" },
+      take: limit,
+    });
+    return rows.map(rowFromDb);
+  }
+
   /** The recorded events after `fromSeq`, in order. */
   async eventsAfter(boardId: string, fromSeq: number): Promise<BoardEvent[]> {
     const rows = await this.db.boardEvent.findMany({

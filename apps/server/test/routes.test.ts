@@ -209,3 +209,28 @@ describe("rate limits", () => {
     await limited.close();
   });
 });
+
+describe("history", () => {
+  it("pages through the board's events, newest first", async () => {
+    const { boardId, cookie } = await newBoard(); // events 1–4
+    const get = (query: string) =>
+      app.inject({ url: `/api/boards/${boardId}/events${query}`, headers: { cookie } }).then((r) => r.json());
+    const first = await get("?limit=3");
+    expect(first.events.map((e: { seq: number }) => e.seq)).toEqual([4, 3, 2]);
+    expect(first.hasMore).toBe(true);
+    const rest = await get("?before=2&limit=3");
+    expect(rest.events.map((e: { seq: number }) => e.seq)).toEqual([1]);
+    expect(rest.hasMore).toBe(false);
+    expect(rest.events[0]).toMatchObject({ type: "participant.joined", payload: { name: "Ana" } });
+  });
+
+  it("is only for the board's participants, and validates the query", async () => {
+    const { boardId, cookie } = await newBoard();
+    expect((await app.inject({ url: `/api/boards/${boardId}/events` })).statusCode).toBe(401);
+    expect(
+      (await app.inject({ url: `/api/boards/${boardId}/events?before=abc`, headers: { cookie } })).statusCode,
+    ).toBe(400);
+    const capped = await app.inject({ url: `/api/boards/${boardId}/events?limit=5000`, headers: { cookie } });
+    expect(capped.statusCode).toBe(200);
+  });
+});

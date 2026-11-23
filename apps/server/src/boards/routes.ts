@@ -5,6 +5,8 @@ import {
   joinBoardRequest,
   type BoardSnapshot,
   type CreateBoardResponse,
+  type HistoryPage,
+  HISTORY_PAGE_MAX,
   type OpResult,
   type ParticipantState,
   type TicketResponse,
@@ -97,6 +99,23 @@ export function registerBoardRoutes(
       return { url: `${publicWsUrl}?ticket=${encodeURIComponent(ticket)}` };
     },
   );
+
+  // The board's history, newest first, a page at a time (new events arrive live over the socket).
+  app.get("/api/boards/:boardId/events", async (request): Promise<HistoryPage> => {
+    const boardId = boardIdOf(request);
+    await participantOf(request, boardId);
+    const query = request.query as { before?: string; limit?: string };
+    const before = query.before === undefined ? undefined : Number(query.before);
+    const limit = Math.min(Number(query.limit ?? 50), HISTORY_PAGE_MAX);
+    if (
+      (before !== undefined && !(Number.isInteger(before) && before > 0)) ||
+      !(Number.isInteger(limit) && limit > 0)
+    ) {
+      throw invalid();
+    }
+    const events = await store.eventsBefore(boardId, before, limit + 1);
+    return { events: events.slice(0, limit), hasMore: events.length > limit };
+  });
 
   app.post("/api/boards/:boardId/ops", async (request): Promise<OpResult> => {
     const boardId = boardIdOf(request);

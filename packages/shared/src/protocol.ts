@@ -61,6 +61,14 @@ export type JoinBoardRequest = z.infer<typeof joinBoardRequest>;
 
 export const BOARD_ID = /^[A-Za-z0-9]{10}$/;
 
+/** `GET /api/boards/:id/events?before=<seq>&limit=<n>`: the history, newest first. */
+export interface HistoryPage {
+  events: BoardEvent[];
+  /** Older events exist (ask again with `before` = the last seq here). */
+  hasMore: boolean;
+}
+export const HISTORY_PAGE_MAX = 100;
+
 /** Every API error looks like this; `message` is ready to show (pt-BR). */
 export interface ApiError {
   error: { code: string; message: string };
