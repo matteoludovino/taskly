@@ -70,3 +70,38 @@ body {
   white-space: nowrap;
   user-select: none;
 }
+
+/* The landing title, typed out with a blinking cursor (the original Taskly's effect). */
+.typed-title {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.2em;
+}
+.typed-title__static {
+  display: none;
+}
+.typed-title__cursor {
+  display: inline-block;
+  width: 3px;
+  height: 0.9em;
+  margin-left: 0.08em;
+  background: currentColor;
+  animation: typed-title-blink 750ms steps(1, end) infinite;
+}
+@keyframes typed-title-blink {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .typed-title__typing {
+    display: none;
+  }
+  .typed-title__static {
+    display: inline;
+  }
+  .typed-title__cursor {
+    animation: none;
+    opacity: 0;
+  }
+}
