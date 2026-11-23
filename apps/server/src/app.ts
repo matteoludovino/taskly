@@ -5,6 +5,7 @@ import { PROTOCOL_VERSION, type HealthResponse } from "@taskly/shared";
 import { scheduleCleanup } from "./boards/cleanup.ts";
 import { registerBoardRoutes } from "./boards/routes.ts";
 import { registerDemoRoutes } from "./demo/routes.ts";
+import { TeammateDirector, type TeammateOptions } from "./demo/teammate.ts";
 import { BoardStore } from "./boards/store.ts";
 import type { Db } from "./db.ts";
 import { HttpError, installErrors } from "./http/errors.ts";
@@ -27,6 +28,7 @@ export interface AppDeps {
   collab?: Partial<HubOptions>;
   /** At most this many demo boards alive at once. */
   demoMax?: number;
+  teammate?: Partial<TeammateOptions>;
   /** Remove expired boards on start and this often (0: never; tests clean up themselves). */
   cleanupEveryMs?: number;
 }
@@ -45,6 +47,7 @@ export async function buildApp({
   collab = {},
   demoMax = 300,
   cleanupEveryMs = 0,
+  teammate = {},
 }: AppDeps) {
   const app = Fastify({ logger, trustProxy, bodyLimit: 64 * 1024 });
   app.decorate("db", db);
@@ -93,13 +96,25 @@ export async function buildApp({
     },
     app.log,
   );
-  installGateway(app, store, docs, {
+  const gateway = installGateway(app, store, docs, {
     origins,
     tickets,
     snapshotAfter: realtime.snapshotAfter ?? 500,
     heartbeatMs: realtime.heartbeatMs ?? 25_000,
     maxBufferedBytes: realtime.maxBufferedBytes ?? 4 * 1024 * 1024,
   });
+  const teammates = new TeammateDirector(
+    {
+      store,
+      docs,
+      rooms: gateway.rooms,
+      announce: (boardId) => gateway.announcePresence(boardId),
+      log: app.log,
+    },
+    { pauseMs: [6000, 12_000], keystrokeMs: [70, 160], dragMs: 1200, typeChance: 0.3, ...teammate },
+  );
+  gateway.onMembership = (boardId) => teammates.update(boardId);
+  gateway.beforeShutdown = () => teammates.stopAll();
   return app;
 }
 

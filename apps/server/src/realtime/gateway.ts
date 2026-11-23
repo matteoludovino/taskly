@@ -165,6 +165,7 @@ class Session implements Member, Peer {
         if (newlyOnline) this.gateway.announcePresence(this.boardId);
         else this.send(this.gateway.presence(this.boardId));
         this.log.info("synced");
+        this.gateway.membershipChanged(this.boardId);
         return;
       }
       case "op": {
@@ -196,6 +197,7 @@ class Session implements Member, Peer {
     // Leaving drops this connection's focus too: tell the others if anything they see changed.
     if (this.gateway.rooms.leave(this) || this.focus) this.gateway.announcePresence(this.boardId);
     this.binary = this.binary.then(() => this.gateway.docs.leaveAll(this));
+    this.gateway.membershipChanged(this.boardId);
     this.log.info({ code }, "websocket closed");
   }
 
@@ -264,6 +266,15 @@ export class Gateway {
     return { t: "presence", online: this.rooms.online(boardId), activity: this.rooms.activity(boardId) };
   }
 
+  /** Someone joined or left a board (the demo's teammate starts and stops with its people). */
+  membershipChanged(boardId: string): void {
+    void this.onMembership?.(boardId);
+  }
+
+  onMembership: ((boardId: string) => Promise<void> | void) | undefined;
+  /** Runs first on shutdown (the simulated teammates stop before documents are saved). */
+  beforeShutdown: (() => void) | undefined;
+
   announcePresence(boardId: string): void {
     this.rooms.broadcast(boardId, this.presence(boardId));
   }
@@ -287,6 +298,7 @@ export function installGateway(
   // Before the HTTP server closes (it waits for open sockets, and these only close when told to):
   // save every open description and close its edit session, then send everyone 1012.
   app.addHook("preClose", async () => {
+    gateway.beforeShutdown?.();
     await docs.flushAll();
     gateway.close();
   });

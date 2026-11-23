@@ -5,6 +5,8 @@ export interface Member {
   readonly participantId: string;
   /** What this connection is doing (editing or dragging a card), if anything. */
   readonly focus: Focus | null;
+  /** Played by the server (the demo's simulated teammate): present, but not a person watching. */
+  readonly virtual?: true;
   sendRaw(data: string): void;
 }
 
@@ -27,6 +29,11 @@ export class Rooms {
     if (!members?.delete(member)) return false;
     if (members.size === 0) this.boards.delete(member.boardId);
     return !this.isOnline(member.boardId, member.participantId);
+  }
+
+  /** Real people connected (the simulated teammate doesn't count). */
+  humans(boardId: string): number {
+    return [...(this.boards.get(boardId) ?? [])].filter((m) => !m.virtual).length;
   }
 
   online(boardId: string): string[] {
