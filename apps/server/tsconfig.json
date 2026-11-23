@@ -5,5 +5,5 @@
     // The generated Prisma client imports its own files with .ts extensions; esbuild bundles them.
     "allowImportingTsExtensions": true
   },
-  "include": ["src", "test", "*.ts", "*.mjs"]
+  "include": ["src", "test", "scripts", "*.ts", "*.mjs"]
 }
