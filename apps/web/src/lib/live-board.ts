@@ -9,6 +9,7 @@ import {
   submit,
   uuidv7,
   type Activity,
+  type BoardEvent,
   type BoardState,
   type ClientMessage,
   type Focus,
@@ -72,6 +73,7 @@ export class LiveBoard {
   private focus: Focus | null = null;
   private binaryListeners = new Set<(data: Uint8Array) => void>();
   private liveListeners = new Set<() => void>();
+  private eventListeners = new Set<(news: { event: BoardEvent } | { snapshot: true }) => void>();
 
   constructor(
     private readonly boardId: string,
@@ -127,6 +129,15 @@ export class LiveBoard {
   onBinary(listener: (data: Uint8Array) => void): () => void {
     this.binaryListeners.add(listener);
     return () => this.binaryListeners.delete(listener);
+  }
+
+  /**
+   * Every event the server sends (live, in a catch-up, or in an ack), possibly more than once; or a
+   * snapshot, after which events may be missing from what the listener has.
+   */
+  onEvents(listener: (news: { event: BoardEvent } | { snapshot: true }) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => this.eventListeners.delete(listener);
   }
 
   /** Called each time a connection is caught up (documents subscribe again then). */
@@ -210,6 +221,15 @@ export class LiveBoard {
   private onMessage(message: ServerMessage) {
     clearTimeout(this.pongDeadline);
     this.run(receive(this.state.sync, message));
+    const news =
+      message.t === "event"
+        ? { event: message.event }
+        : message.t === "ack" && message.result.result === "applied"
+          ? { event: message.result.event }
+          : message.t === "snapshot"
+            ? ({ snapshot: true } as const)
+            : null;
+    if (news) this.eventListeners.forEach((listener) => listener(news));
     if (message.t === "synced") {
       this.attempt = 0;
       this.set({ connection: "live" });

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useBoard } from "@/lib/use-board";
 import { BoardHeader } from "./board-header";
+import { ActivityPanel } from "./activity-panel";
 import { CardDialog } from "./card-dialog";
 import { ConflictTray } from "./conflict-tray";
 import { JoinForm } from "./join-form";
@@ -77,6 +78,7 @@ export function BoardScreen({ boardId }: { boardId: string }) {
         onReconnect={reconnectNow}
       >
         <ConflictTray items={tray} board={board} onSettle={settle} />
+        <ActivityPanel board={board} me={me} live={live} onOpenCard={setOpenCardId} />
       </BoardHeader>
       {connection === "outdated" && (
         <p
