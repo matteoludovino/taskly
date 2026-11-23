@@ -8,6 +8,7 @@ import {
   submit,
   uuidv7,
   view,
+  type BoardEvent,
   type BoardSnapshot,
   type ClientMessage,
   type Operation,
@@ -26,6 +27,10 @@ export interface BotOptions {
   name: string;
   color?: string;
   log?: (line: string) => void;
+  /** Extra request headers (the load test gives each bot its own X-Forwarded-For). */
+  headers?: Record<string, string>;
+  /** Called with every event this bot receives (live, catch-up or ack). */
+  onEvent?: (event: BoardEvent) => void;
 }
 
 /**
@@ -53,6 +58,7 @@ export class BotClient {
     const response = await fetch(`${this.options.origin}/api${path}`, {
       method,
       headers: {
+        ...this.options.headers,
         origin: this.options.origin,
         ...(this.cookie ? { cookie: this.cookie } : {}),
         ...(body ? { "content-type": "application/json" } : {}),
@@ -74,7 +80,7 @@ export class BotClient {
 
   async open(): Promise<void> {
     const { data } = await this.rest<TicketResponse>(`/boards/${this.options.boardId}/ticket`, "POST");
-    const ws = new WebSocket(data.url, { origin: this.options.origin });
+    const ws = new WebSocket(data.url, { origin: this.options.origin, headers: this.options.headers ?? {} });
     this.ws = ws;
     await new Promise<void>((resolve, reject) => {
       ws.once("open", () => resolve());
@@ -90,7 +96,11 @@ export class BotClient {
   }
 
   submit(op: Operation): void {
-    this.run(submit(this.sync!, { clientOpId: uuidv7(), op }));
+    this.submitEnvelope({ clientOpId: uuidv7(), op });
+  }
+
+  submitEnvelope(envelope: { clientOpId: string; op: Operation }): void {
+    this.run(submit(this.sync!, envelope));
   }
 
   /** The board as this bot sees it (confirmed plus its own pending changes). */
@@ -124,6 +134,7 @@ export class BotClient {
 
   private onMessage(message: ServerMessage) {
     this.run(receive(this.sync!, message));
+    if (message.t === "event") this.options.onEvent?.(message.event);
     if (message.t === "synced") this.synced = true;
     if (message.t === "event" && message.event.actorId && message.event.clientOpId) {
       this.log(`#${message.event.seq} ${message.event.type}`);

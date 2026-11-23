@@ -14,7 +14,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "postinstall": "prisma generate",
     "bot": "tsx src/tools/bot.ts",
-    "db:prepare": "tsx scripts/prepare-db.ts"
+    "db:prepare": "tsx scripts/prepare-db.ts",
+    "load": "tsx src/tools/load.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",
