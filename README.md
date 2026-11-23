@@ -46,6 +46,16 @@ safe because the server answers an already-applied operation with its original e
 three clients against a model server with messages reordered, duplicated and dropped, and checks they all
 converge on the server's board.
 
+## Conflicts
+
+Most concurrent changes simply merge: edits to different cards, or to different fields of the same card,
+and moves (the last one wins). The one case worth a person's attention is two people changing the same
+field. Every field edit carries the version of that field the person was looking at; the server turns it
+down only if someone else changed the field since, to a different value, and says what's there now and who
+put it. The change then waits in a **conflict tray** with "keep mine" (the same edit, based on the current
+version) or "keep theirs". A delete beats an edit or a move, and the tray offers to restore the card with
+the change applied. Who is editing or dragging which card is shown live, so most conflicts never happen.
+
 ## Running locally
 
 Requirements: Node.js 22.18+, Docker.
@@ -71,7 +81,7 @@ npm run dev                            # server on :8030, web on http://localhos
 1. ✅ Monorepo: Next 16 / Tailwind 4, Fastify server, shared package, Vitest, Compose, CI
 2. ✅ Boards, columns and cards over REST; join by link + name; drag and drop
 3. ✅ Real-time core: ordered event log, acknowledgements, gap recovery, presence, reconnection
-4. Who is editing what; per-field conflicts and a conflict tray
+4. ✅ Who is editing what; per-field conflicts and a conflict tray
 5. Simultaneous description editing (Yjs)
 6. Live activity history
 7. Offline: pending changes and documents survive a reload
