@@ -43,6 +43,11 @@ function rowFromDb(row: {
 const isUniqueViolation = (error: unknown) =>
   error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 
+/** The unique violation is on the operation id (a resend), not on the event number (another writer). */
+const isDuplicateOperation = (error: unknown) =>
+  isUniqueViolation(error) &&
+  JSON.stringify((error as Prisma.PrismaClientKnownRequestError).meta ?? {}).includes("clientOpId");
+
 /**
  * The one way anything changes on a board: REST, WebSocket and the server's own events all come here.
  *
@@ -130,21 +135,37 @@ export class BoardStore {
     this.cache.delete(boardId);
   }
 
+  /**
+   * Resending an operation must return its original event. When the decision is an event, the unique
+   * clientOpId catches a resend for free (the insert fails, then we look the original up); only a no-op
+   * or a rejection needs the lookup first: a resent card.create, for one, would otherwise be "exists".
+   */
   private async applyNow(boardId: string, actorId: string, envelope: Envelope): Promise<OpResult> {
-    const recorded = await this.db.boardEvent.findUnique({
-      where: { boardId_clientOpId: { boardId, clientOpId: envelope.clientOpId } },
-    });
-    if (recorded) return { result: "applied", event: rowFromDb(recorded) };
-
     const state = await this.require(boardId);
     const decision = decide(state, envelope.op, actorId);
-    if (decision.kind === "noop") return { result: "noop", seq: state.seq };
-    if (decision.kind === "rejected") {
+    if (decision.kind !== "event") {
+      const recorded = await this.recorded(boardId, envelope.clientOpId);
+      if (recorded) return { result: "applied", event: recorded };
+      if (decision.kind === "noop") return { result: "noop", seq: state.seq };
       const { code, conflict } = decision;
       return { result: "rejected", code, seq: state.seq, ...(conflict ? { conflict } : {}) };
     }
-    const event = await this.commit(state, decision.event, actorId, envelope.clientOpId);
-    return { result: "applied", event };
+    try {
+      const event = await this.commit(state, decision.event, actorId, envelope.clientOpId);
+      return { result: "applied", event };
+    } catch (error) {
+      if (!isDuplicateOperation(error)) throw error;
+      const recorded = await this.recorded(boardId, envelope.clientOpId);
+      if (!recorded) throw error;
+      return { result: "applied", event: recorded };
+    }
+  }
+
+  private async recorded(boardId: string, clientOpId: string): Promise<BoardEvent | null> {
+    const row = await this.db.boardEvent.findUnique({
+      where: { boardId_clientOpId: { boardId, clientOpId } },
+    });
+    return row ? rowFromDb(row) : null;
   }
 
   /**

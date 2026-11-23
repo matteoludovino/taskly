@@ -65,6 +65,29 @@ describe("BoardStore", () => {
     expect(await db.boardEvent.count({ where: { boardId } })).toBe(2);
   });
 
+  it("answers a resend with the original event even when deciding again would make a new one", async () => {
+    const store = new BoardStore(db);
+    const { boardId, columnId } = await boardWithColumn(store);
+    const cardId = uuidv7();
+    applied(
+      await store.apply(boardId, ana, op({ type: "card.create", cardId, columnId, title: "original" })),
+    );
+    const mine = op({ type: "card.update", cardId, change: { field: "title", value: "x" } });
+    const first = applied(await store.apply(boardId, ana, mine));
+    applied(
+      await store.apply(
+        boardId,
+        ana,
+        op({ type: "card.update", cardId, change: { field: "title", value: "y" } }),
+      ),
+    );
+    // Decided again, the resend would set "x" over "y": the unique operation id stops it.
+    const again = applied(await store.apply(boardId, ana, mine));
+    expect(again).toEqual(first);
+    expect((await store.get(boardId))?.cards[cardId]?.title).toBe("y");
+    expect(await db.boardEvent.count({ where: { boardId } })).toBe(4);
+  });
+
   it("spends no number on no-ops and rejections", async () => {
     const store = new BoardStore(db);
     const { boardId, columnId } = await boardWithColumn(store);
