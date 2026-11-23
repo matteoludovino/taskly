@@ -10,6 +10,8 @@ const app = await buildApp({
   trustProxy: env.TRUST_PROXY,
   secureCookies: env.NODE_ENV === "production",
   publicWsUrl: env.PUBLIC_WS_URL,
+  demoMax: env.DEMO_MAX_BOARDS,
+  cleanupEveryMs: 6 * 60 * 60 * 1000,
   logger: {
     level: env.LOG_LEVEL,
     // Log the path only: the WebSocket handshake carries its one-time ticket in the query string.

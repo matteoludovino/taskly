@@ -58,6 +58,8 @@ export interface ParticipantState {
   id: string;
   name: string;
   color: string;
+  /** A teammate played by the server on demo boards. */
+  simulated?: true;
 }
 
 export interface BoardState {

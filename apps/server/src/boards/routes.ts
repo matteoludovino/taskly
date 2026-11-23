@@ -32,23 +32,28 @@ function boardIdOf(request: FastifyRequest): string {
   return boardId;
 }
 
+/**
+ * One cookie per board, scoped to that board's API path: being in several boards just means several
+ * cookies, and none of them is sent anywhere else.
+ */
+export function setParticipantCookie(reply: FastifyReply, boardId: string, token: string, secure: boolean) {
+  reply.setCookie(COOKIE, token, {
+    path: `/api/boards/${boardId}`,
+    httpOnly: true,
+    sameSite: "lax",
+    secure,
+    maxAge: NINETY_DAYS,
+  });
+}
+
 export function registerBoardRoutes(
   app: FastifyInstance,
   { secureCookies, tickets, publicWsUrl }: { secureCookies: boolean; tickets: Tickets; publicWsUrl: string },
 ) {
   const { db, store } = app;
 
-  // One cookie per board, scoped to that board's API path: being in several boards just means several
-  // cookies, and none of them is sent anywhere else.
-  function setMembership(reply: FastifyReply, boardId: string, membership: Membership) {
-    reply.setCookie(COOKIE, membership.token, {
-      path: `/api/boards/${boardId}`,
-      httpOnly: true,
-      sameSite: "lax",
-      secure: secureCookies,
-      maxAge: NINETY_DAYS,
-    });
-  }
+  const setMembership = (reply: FastifyReply, boardId: string, membership: Membership) =>
+    setParticipantCookie(reply, boardId, membership.token, secureCookies);
 
   async function participantOf(request: FastifyRequest, boardId: string): Promise<ParticipantState> {
     const participant = await findParticipant(db, boardId, request.cookies[COOKIE]);
@@ -85,7 +90,8 @@ export function registerBoardRoutes(
     const participant = await participantOf(request, boardId);
     const board = await store.get(boardId);
     if (!board) throw notFound();
-    return { board, me: me(board, participant) };
+    const row = await db.board.findUnique({ where: { id: boardId }, select: { expiresAt: true } });
+    return { board, me: me(board, participant), expiresAt: row?.expiresAt?.toISOString() ?? null };
   });
 
   // Trades the participant cookie (first-party to the web app) for a one-time WebSocket pass.

@@ -7,7 +7,7 @@ import type { Priority } from "./model";
  */
 export interface EventPayloads {
   "board.renamed": { title: string; previousTitle: string };
-  "participant.joined": { participantId: string; name: string; color: string };
+  "participant.joined": { participantId: string; name: string; color: string; simulated?: true };
   "column.created": { columnId: string; title: string; position: string };
   "column.renamed": { columnId: string; title: string; previousTitle: string };
   "column.moved": { columnId: string; title: string; position: string };

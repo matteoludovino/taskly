@@ -35,10 +35,13 @@ export function applyEvent(
       return { ...next, title: event.payload.title };
 
     case "participant.joined": {
-      const { participantId, name, color } = event.payload;
+      const { participantId, name, color, simulated } = event.payload;
       return {
         ...next,
-        participants: { ...state.participants, [participantId]: { id: participantId, name, color } },
+        participants: {
+          ...state.participants,
+          [participantId]: { id: participantId, name, color, ...(simulated ? { simulated } : {}) },
+        },
       };
     }
 

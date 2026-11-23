@@ -36,6 +36,8 @@ export type OpResult =
 export interface BoardSnapshot {
   board: BoardState;
   me: ParticipantState;
+  /** When a demo board disappears (null: a regular board). */
+  expiresAt: string | null;
 }
 
 /** `POST /api/boards`: a new board, and its creator as the first participant. */

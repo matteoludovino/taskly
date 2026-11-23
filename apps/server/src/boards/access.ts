@@ -17,21 +17,25 @@ export interface Membership {
   token: string;
 }
 
-async function addParticipant(
+export async function addParticipant(
   store: BoardStore,
   boardId: string,
   { name, color }: { name: string; color: string },
+  { simulated = false } = {},
 ): Promise<Membership> {
   const participant = { id: uuidv7(), name, color };
   const token = newSecret();
+  const payload = {
+    participantId: participant.id,
+    name,
+    color,
+    ...(simulated ? { simulated: true as const } : {}),
+  };
   // Joining is an event too ("Ana entrou no quadro"), written with the participant row.
-  await store.record(
-    boardId,
-    { type: "participant.joined", payload: { participantId: participant.id, name, color } },
-    participant.id,
-    (db) => [db.participant.create({ data: { ...participant, boardId, tokenHash: hashSecret(token) } })],
-  );
-  return { participant, token };
+  await store.record(boardId, { type: "participant.joined", payload }, participant.id, (db) => [
+    db.participant.create({ data: { ...participant, simulated, boardId, tokenHash: hashSecret(token) } }),
+  ]);
+  return { participant: simulated ? { ...participant, simulated: true } : participant, token };
 }
 
 export async function createBoard(

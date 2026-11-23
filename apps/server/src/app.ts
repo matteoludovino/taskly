@@ -2,7 +2,9 @@ import cookie from "@fastify/cookie";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, { type FastifyServerOptions } from "fastify";
 import { PROTOCOL_VERSION, type HealthResponse } from "@taskly/shared";
+import { scheduleCleanup } from "./boards/cleanup.ts";
 import { registerBoardRoutes } from "./boards/routes.ts";
+import { registerDemoRoutes } from "./demo/routes.ts";
 import { BoardStore } from "./boards/store.ts";
 import type { Db } from "./db.ts";
 import { HttpError, installErrors } from "./http/errors.ts";
@@ -23,6 +25,10 @@ export interface AppDeps {
   publicWsUrl?: string;
   realtime?: Partial<Omit<GatewayOptions, "origins" | "tickets">> & { ticketTtlMs?: number };
   collab?: Partial<HubOptions>;
+  /** At most this many demo boards alive at once. */
+  demoMax?: number;
+  /** Remove expired boards on start and this often (0: never; tests clean up themselves). */
+  cleanupEveryMs?: number;
 }
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -37,6 +43,8 @@ export async function buildApp({
   publicWsUrl = "ws://localhost:8030/ws",
   realtime = {},
   collab = {},
+  demoMax = 300,
+  cleanupEveryMs = 0,
 }: AppDeps) {
   const app = Fastify({ logger, trustProxy, bodyLimit: 64 * 1024 });
   app.decorate("db", db);
@@ -64,6 +72,14 @@ export async function buildApp({
 
   const tickets = new Tickets(realtime.ticketTtlMs);
   registerBoardRoutes(app, { secureCookies, tickets, publicWsUrl });
+  registerDemoRoutes(app, { maxLive: demoMax, secureCookies });
+  if (cleanupEveryMs > 0) {
+    let stopCleanup = () => {};
+    app.addHook("onReady", async () => {
+      stopCleanup = scheduleCleanup(db, store, app.log, cleanupEveryMs);
+    });
+    app.addHook("onClose", async () => stopCleanup());
+  }
   const docs = new DocHub(
     db,
     store,

@@ -34,7 +34,14 @@ export async function loadBoard(db: Db, boardId: string): Promise<BoardState | n
 
   const state = emptyBoard(board.id, board.title);
   state.seq = board.seq;
-  for (const p of participants) state.participants[p.id] = { id: p.id, name: p.name, color: p.color };
+  for (const p of participants) {
+    state.participants[p.id] = {
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      ...(p.simulated ? { simulated: true } : {}),
+    };
+  }
   for (const c of columns) {
     if (c.deletedAt || c.position === null) state.deletedColumns[c.id] = c.title;
     else state.columns[c.id] = { id: c.id, title: c.title, position: c.position };

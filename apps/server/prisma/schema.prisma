@@ -22,11 +22,14 @@ model Board {
   seq            Int           @default(0)
   createdAt      DateTime      @default(now()) @db.Timestamptz(3)
   lastActivityAt DateTime      @default(now()) @db.Timestamptz(3)
+  /// Demo boards disappear at this time; others after a long stretch without activity.
+  expiresAt      DateTime?     @db.Timestamptz(3)
   participants   Participant[]
   columns        Column[]
   events         BoardEvent[]
 
   @@index([lastActivityAt])
+  @@index([expiresAt])
   @@map("boards")
 }
 
@@ -38,6 +41,8 @@ model Participant {
   name      String   @db.VarChar(40)
   color     String   @db.VarChar(7)
   tokenHash Bytes    @unique
+  /// A teammate played by the server on demo boards (never a person).
+  simulated Boolean  @default(false)
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([boardId])

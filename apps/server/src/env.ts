@@ -21,6 +21,7 @@ const schema = z.object({
     .transform((value) => value === "true"),
   /** The WebSocket address browsers connect to (wss://… in production). */
   PUBLIC_WS_URL: z.string().default("ws://localhost:8030/ws"),
+  DEMO_MAX_BOARDS: z.coerce.number().int().positive().default(300),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 });
 
