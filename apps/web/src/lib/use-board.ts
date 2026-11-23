@@ -50,7 +50,7 @@ type Fetched =
 
 type Loaded =
   | Exclude<Fetched, { kind: "ready" }>
-  | { kind: "ready"; sync: SyncState; me: ParticipantState; dropped: number };
+  | { kind: "ready"; sync: SyncState; me: ParticipantState; dropped: number; expiresAt: string | null };
 
 const WAKE_FOR_MS = 120_000;
 /**
@@ -96,12 +96,13 @@ async function openBoard(boardId: string, onWaking: () => void, { fresh = false 
   const saved = await loadBoard(boardId);
   // `fresh` (after joining again): the saved copy belongs to the previous identity; keep only its changes.
   if (saved?.board && !fresh) {
-    const { confirmed, settled, me } = saved.board;
+    const { confirmed, settled, me, expiresAt } = saved.board;
     return {
       kind: "ready",
       sync: { ...initialSync(confirmed), pending: saved.pending, settled },
       me,
       dropped: saved.dropped,
+      expiresAt,
     };
   }
   const fetched = await fetchBoard(boardId, onWaking);
@@ -112,6 +113,7 @@ async function openBoard(boardId: string, onWaking: () => void, { fresh = false 
     sync: { ...initialSync(fetched.snapshot.board), pending: saved?.pending ?? [] },
     me: fetched.snapshot.me,
     dropped: saved?.dropped ?? 0,
+    expiresAt: fetched.snapshot.expiresAt,
   };
 }
 
@@ -125,6 +127,7 @@ const nothing = () => null;
 export function useBoard(boardId: string) {
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
   const [me, setMe] = useState<ParticipantState | null>(null);
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [live, setLive] = useState<LiveBoard | null>(null);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [tray, setTray] = useState<TrayItem[]>([]);
@@ -142,6 +145,7 @@ export function useBoard(boardId: string) {
       switch (loaded.kind) {
         case "ready": {
           setMe(loaded.me);
+          setExpiresAt(loaded.expiresAt);
           if (loaded.dropped > 0) {
             notify(
               `${loaded.dropped} alteração(ões) guardada(s) neste navegador não puderam ser recuperadas.`,
@@ -211,7 +215,7 @@ export function useBoard(boardId: string) {
     return holdBoard(boardId, () => {
       let last = live.getSnapshot().sync;
       let timer: ReturnType<typeof setTimeout> | undefined;
-      const save = () => void saveBoard(boardId, me, live.getSnapshot().sync);
+      const save = () => void saveBoard(boardId, me, live.getSnapshot().sync, expiresAt);
       const flush = () => {
         clearTimeout(timer);
         save();
@@ -231,7 +235,7 @@ export function useBoard(boardId: string) {
         flush();
       };
     });
-  }, [boardId, live, me]);
+  }, [boardId, live, me, expiresAt]);
 
   // Leaving with changes not yet confirmed: ask first (they're also saved, but may not be sent soon).
   const pending = state?.sync.pending.length ?? 0;
@@ -288,6 +292,7 @@ export function useBoard(boardId: string) {
     setFocus,
     pending,
     waking: state?.waking ?? false,
+    expiresAt,
     notices,
     submit,
     join,

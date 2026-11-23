@@ -13,6 +13,7 @@ export function BoardHeader({
   me,
   connection,
   waking,
+  expiresAt,
   online,
   pending,
   onRename,
@@ -23,6 +24,8 @@ export function BoardHeader({
   me: ParticipantState;
   connection: Connection;
   waking: boolean;
+  /** Set for demo boards. */
+  expiresAt: string | null;
   online: string[];
   pending: number;
   onRename: (title: string) => void;
@@ -55,6 +58,7 @@ export function BoardHeader({
         <h1 className="min-w-0 flex-1 text-lg font-semibold">
           <InlineEdit value={board.title} label="Nome do quadro" maxLength={80} onSave={onRename} />
         </h1>
+        {expiresAt && <DemoBadge expiresAt={expiresAt} />}
       </div>
       <div className="flex flex-1 flex-wrap items-center justify-end gap-3 sm:flex-none">
         <ConnectionStatus
@@ -132,5 +136,19 @@ function ConnectionStatus({
         </>
       )}
     </p>
+  );
+}
+
+/** Demo boards are temporary: say so, with the time left. */
+function DemoBadge({ expiresAt }: { expiresAt: string }) {
+  const [now] = useState(() => Date.now());
+  const hours = Math.max(1, Math.ceil((new Date(expiresAt).getTime() - now) / 3_600_000));
+  return (
+    <span
+      className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-950"
+      title="Quadros de demonstração são apagados depois de 24 horas"
+    >
+      Demo · some em {hours} h
+    </span>
   );
 }

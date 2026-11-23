@@ -37,6 +37,7 @@ export function BoardScreen({ boardId }: { boardId: string }) {
     notices,
     pending,
     waking,
+    expiresAt,
     submit,
     join,
     reconnectNow,
@@ -81,6 +82,7 @@ export function BoardScreen({ boardId }: { boardId: string }) {
         me={me}
         connection={connection}
         waking={waking}
+        expiresAt={expiresAt}
         online={online}
         pending={pending}
         onRename={(title) => submit({ type: "board.rename", title })}

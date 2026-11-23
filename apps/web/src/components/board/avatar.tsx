@@ -1,8 +1,12 @@
 import type { ParticipantState } from "@taskly/shared";
 
+/** First letters of the first and last words, letters only ("Bia (simulada)" → "BS"). */
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "") + (parts.length > 1 ? (parts.at(-1)?.[0] ?? "") : "")).toUpperCase();
+  const words = name
+    .split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}]/gu, ""))
+    .filter(Boolean);
+  return ((words[0]?.[0] ?? "") + (words.length > 1 ? (words.at(-1)?.[0] ?? "") : "")).toUpperCase();
 }
 
 export function Avatar({

@@ -23,6 +23,8 @@ export interface SavedBoard {
   confirmed: BoardState;
   pending: Envelope[];
   settled: Record<string, number>;
+  /** When a demo board disappears (null for regular boards). */
+  expiresAt?: string | null;
   savedAt: number;
 }
 
@@ -63,7 +65,12 @@ const docKey = (boardId: string, cardId: string) => `${boardId}:${cardId}`;
 
 export interface Restored {
   /** Null when the saved board can't be used (older format): fetch a fresh one, keep the operations. */
-  board: { confirmed: BoardState; settled: Record<string, number>; me: ParticipantState } | null;
+  board: {
+    confirmed: BoardState;
+    settled: Record<string, number>;
+    me: ParticipantState;
+    expiresAt: string | null;
+  } | null;
   pending: Envelope[];
   /** Saved operations that no longer have a valid shape and were left out. */
   dropped: number;
@@ -82,7 +89,14 @@ export function restore(saved: unknown): Restored | null {
   }
   const usable = record.schema === LOCAL_SCHEMA && record.confirmed && record.me;
   return {
-    board: usable ? { confirmed: record.confirmed!, settled: record.settled ?? {}, me: record.me! } : null,
+    board: usable
+      ? {
+          confirmed: record.confirmed!,
+          settled: record.settled ?? {},
+          me: record.me!,
+          expiresAt: record.expiresAt ?? null,
+        }
+      : null,
     pending,
     dropped,
   };
@@ -93,7 +107,12 @@ export async function loadBoard(boardId: string): Promise<Restored | null> {
   return restore(await db?.get("boards", boardId).catch(() => undefined));
 }
 
-export async function saveBoard(boardId: string, me: ParticipantState, sync: SyncState): Promise<void> {
+export async function saveBoard(
+  boardId: string,
+  me: ParticipantState,
+  sync: SyncState,
+  expiresAt: string | null = null,
+): Promise<void> {
   const db = await localDb();
   await db
     ?.put("boards", {
@@ -103,6 +122,7 @@ export async function saveBoard(boardId: string, me: ParticipantState, sync: Syn
       confirmed: sync.confirmed,
       pending: sync.pending,
       settled: sync.settled,
+      expiresAt,
       savedAt: Date.now(),
     })
     .catch(() => undefined);

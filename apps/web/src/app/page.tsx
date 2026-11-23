@@ -1,4 +1,5 @@
 import { CreateBoardForm } from "@/components/create-board-form";
+import { DemoButton } from "@/components/demo-button";
 import { ServerStatus } from "@/components/server-status";
 
 export default function Home() {
@@ -11,9 +12,11 @@ export default function Home() {
         </p>
         <ul className="grid gap-2 text-zinc-600">
           <li>Arraste cartões entre colunas; todo mundo vê onde eles foram parar.</li>
+          <li>Escrevam juntos na descrição de um cartão, cada um com o seu cursor.</li>
+          <li>Sem internet? Continue editando: tudo se junta quando a conexão volta.</li>
           <li>Entre só com um link e um nome, sem criar conta.</li>
-          <li>Prioridade, prazo e conclusão em cada cartão.</li>
         </ul>
+        <DemoButton />
         <ServerStatus />
       </section>
       <CreateBoardForm />
