@@ -4,11 +4,18 @@ import WebSocket from "ws";
 /** A WebSocket client for tests: records everything the server sends and waits for what's expected. */
 export class TestClient {
   readonly received: ServerMessage[] = [];
+  /** Binary frames (collaborative documents), handed to whoever listens. */
+  readonly binaryListeners = new Set<(data: Uint8Array) => void>();
   readonly closed: Promise<{ code: number; reason: string }>;
   private waiters: (() => void)[] = [];
 
   private constructor(readonly ws: WebSocket) {
-    ws.on("message", (data) => {
+    ws.on("message", (data, isBinary) => {
+      if (isBinary) {
+        const bytes = new Uint8Array(data as Buffer);
+        this.binaryListeners.forEach((listen) => listen(bytes));
+        return;
+      }
       this.received.push(JSON.parse(data.toString()) as ServerMessage);
       this.waiters.forEach((wake) => wake());
     });

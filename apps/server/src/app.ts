@@ -6,6 +6,7 @@ import { registerBoardRoutes } from "./boards/routes.ts";
 import { BoardStore } from "./boards/store.ts";
 import type { Db } from "./db.ts";
 import { HttpError, installErrors } from "./http/errors.ts";
+import { DocHub, type HubOptions } from "./collab/hub.ts";
 import { installGateway, type GatewayOptions } from "./realtime/gateway.ts";
 import { Tickets } from "./realtime/tickets.ts";
 
@@ -21,6 +22,7 @@ export interface AppDeps {
   /** Where browsers open the WebSocket (the server's public address). */
   publicWsUrl?: string;
   realtime?: Partial<Omit<GatewayOptions, "origins" | "tickets">> & { ticketTtlMs?: number };
+  collab?: Partial<HubOptions>;
 }
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -34,6 +36,7 @@ export async function buildApp({
   secureCookies = false,
   publicWsUrl = "ws://localhost:8030/ws",
   realtime = {},
+  collab = {},
 }: AppDeps) {
   const app = Fastify({ logger, trustProxy, bodyLimit: 64 * 1024 });
   app.decorate("db", db);
@@ -61,7 +64,20 @@ export async function buildApp({
 
   const tickets = new Tickets(realtime.ticketTtlMs);
   registerBoardRoutes(app, { secureCookies, tickets, publicWsUrl });
-  installGateway(app, store, {
+  const docs = new DocHub(
+    db,
+    store,
+    {
+      saveDebounceMs: 2000,
+      sessionIdleMs: 30_000,
+      unloadAfterMs: 60_000,
+      maxUpdateBytes: 256 * 1024,
+      maxChars: 40_000,
+      ...collab,
+    },
+    app.log,
+  );
+  installGateway(app, store, docs, {
     origins,
     tickets,
     snapshotAfter: realtime.snapshotAfter ?? 500,

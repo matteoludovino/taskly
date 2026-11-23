@@ -49,6 +49,7 @@ export async function loadBoard(db: Db, boardId: string): Promise<BoardState | n
       completed: c.completed,
       position: c.position ?? "",
       versions: versions(c.fieldVersions),
+      descriptionPreview: c.descriptionPreview,
     };
     if (c.deletedAt || c.position === null) state.deletedCards[c.id] = card;
     else state.cards[c.id] = card;

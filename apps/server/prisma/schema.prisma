@@ -72,6 +72,12 @@ model Card {
   position      String?
   /// { field: { seq, by } }: who last changed each field, and when in the board's history.
   fieldVersions Json      @default("{}")
+  /// The description as a Yjs document (all its updates merged); written only by merging.
+  descriptionDoc     Bytes?
+  /// Its plain text, extracted on the server (for search and history).
+  descriptionText    String  @default("")
+  /// The first characters, as of the last recorded edit session (shown on the card).
+  descriptionPreview String  @default("") @db.VarChar(160)
   deletedAt     DateTime? @db.Timestamptz(3)
   createdAt     DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt     DateTime  @default(now()) @updatedAt @db.Timestamptz(3)

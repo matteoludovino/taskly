@@ -84,6 +84,15 @@ export function writesFor(db: Db, event: BoardEvent, next: BoardState, extra: Wr
         }),
       );
       break;
+    case "card.described":
+      // The document and its text are saved by the collaboration layer; the event fixes the preview.
+      writes.push(
+        db.card.update({
+          where: { boardId_id: { boardId, id: event.payload.cardId } },
+          data: { descriptionPreview: event.payload.preview },
+        }),
+      );
+      break;
     case "card.restored": {
       const c = next.cards[event.payload.cardId]!;
       writes.push(

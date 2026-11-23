@@ -3,6 +3,8 @@ import type { Duplex } from "node:stream";
 import {
   CLOSE,
   clientMessage,
+  decodeFrame,
+  FRAME,
   isSupportedProtocol,
   type BoardState,
   type ClientMessage,
@@ -12,6 +14,7 @@ import {
 import type { FastifyBaseLogger, FastifyInstance } from "fastify";
 import { WebSocketServer, type RawData, type WebSocket } from "ws";
 import { BoardNotFound, type BoardStore } from "../boards/store.ts";
+import type { DocHub, Peer } from "../collab/hub.ts";
 import { Rooms, type Member } from "./rooms.ts";
 import type { Grant, Tickets } from "./tickets.ts";
 
@@ -52,13 +55,18 @@ function refuse(socket: Duplex, status: 401 | 403 | 404, text: string) {
   socket.end(`HTTP/1.1 ${status} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
 }
 
-class Session implements Member {
+class Session implements Member, Peer {
   readonly boardId: string;
   readonly participantId: string;
   alive = true;
   focus: Focus | null = null;
   private live = false;
   private readonly budget = new Budget(60, 30);
+  // Typing makes many small document updates; cursors move even more: each has its own allowance.
+  private readonly syncBudget = new Budget(400, 200);
+  private readonly awarenessBudget = new Budget(60, 30);
+  /** Document frames are handled one at a time, in arrival order (subscribe, then sync…). */
+  private binary: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly ws: WebSocket,
@@ -73,7 +81,11 @@ class Session implements Member {
     return this.gateway.log.child({ boardId: this.boardId, participantId: this.participantId });
   }
 
-  sendRaw(data: string): void {
+  sendBinary(data: Uint8Array): void {
+    this.sendRaw(data);
+  }
+
+  sendRaw(data: string | Uint8Array): void {
     if (this.ws.readyState !== this.ws.OPEN) return;
     if (this.ws.bufferedAmount > this.gateway.options.maxBufferedBytes) {
       this.close(CLOSE.tooSlow, "too slow");
@@ -93,7 +105,8 @@ class Session implements Member {
   async onMessage(data: RawData, isBinary: boolean): Promise<void> {
     this.alive = true;
     const size = Array.isArray(data) ? data.reduce((n, b) => n + b.length, 0) : data.byteLength;
-    if (isBinary || size > MAX_JSON_BYTES) return this.close(CLOSE.violation, "unexpected frame");
+    if (isBinary) return this.onBinary(data);
+    if (size > MAX_JSON_BYTES) return this.close(CLOSE.violation, "message too large");
     if (!this.budget.take()) return this.close(CLOSE.violation, "too many messages");
     let parsed: ClientMessage;
     try {
@@ -110,6 +123,25 @@ class Session implements Member {
       this.log.error({ err: error }, "websocket message failed");
       this.close(1011, "internal error");
     }
+  }
+
+  private onBinary(data: RawData): void {
+    if (!this.live) return this.close(CLOSE.violation, "hello first");
+    const bytes = Array.isArray(data)
+      ? new Uint8Array(Buffer.concat(data))
+      : new Uint8Array(
+          data instanceof ArrayBuffer
+            ? data
+            : data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+        );
+    const parsed = decodeFrame(bytes);
+    if (!parsed) return this.close(CLOSE.violation, "invalid frame");
+    const budget = parsed.type === FRAME.awareness ? this.awarenessBudget : this.syncBudget;
+    // Over budget: close the connection rather than drop an update (the client reconnects and resyncs).
+    if (!budget.take()) return this.close(CLOSE.violation, "too many updates");
+    this.binary = this.binary
+      .then(() => this.gateway.docs.handle(this, parsed))
+      .catch((error: unknown) => this.log.error({ err: error }, "document frame failed"));
   }
 
   private async handle(message: ClientMessage): Promise<void> {
@@ -163,6 +195,7 @@ class Session implements Member {
   onClose(code: number): void {
     // Leaving drops this connection's focus too: tell the others if anything they see changed.
     if (this.gateway.rooms.leave(this) || this.focus) this.gateway.announcePresence(this.boardId);
+    this.binary = this.binary.then(() => this.gateway.docs.leaveAll(this));
     this.log.info({ code }, "websocket closed");
   }
 
@@ -185,6 +218,7 @@ export class Gateway {
 
   constructor(
     readonly store: BoardStore,
+    readonly docs: DocHub,
     readonly options: GatewayOptions,
     readonly log: FastifyBaseLogger,
   ) {
@@ -242,10 +276,19 @@ export class Gateway {
   }
 }
 
-export function installGateway(app: FastifyInstance, store: BoardStore, options: GatewayOptions): Gateway {
-  const gateway = new Gateway(store, options, app.log);
+export function installGateway(
+  app: FastifyInstance,
+  store: BoardStore,
+  docs: DocHub,
+  options: GatewayOptions,
+): Gateway {
+  const gateway = new Gateway(store, docs, options, app.log);
   app.server.on("upgrade", (request, socket, head) => gateway.upgrade(request, socket, head));
-  // Before the HTTP server closes: it waits for open sockets, and these only close when told to.
-  app.addHook("preClose", async () => gateway.close());
+  // Before the HTTP server closes (it waits for open sockets, and these only close when told to):
+  // save every open description and close its edit session, then send everyone 1012.
+  app.addHook("preClose", async () => {
+    await docs.flushAll();
+    gateway.close();
+  });
   return gateway;
 }
