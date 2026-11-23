@@ -7,3 +7,66 @@
 body {
   @apply bg-zinc-50 font-sans text-zinc-900 antialiased;
 }
+
+/* Card descriptions (TipTap). */
+.description-content {
+  min-height: 6rem;
+  outline: none;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.description-content > * + * {
+  margin-top: 0.5rem;
+}
+.description-content ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.description-content ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.description-content h3 {
+  font-weight: 600;
+  font-size: 1rem;
+}
+.description-content blockquote {
+  border-left: 3px solid var(--color-zinc-300);
+  padding-left: 0.75rem;
+  color: var(--color-zinc-600);
+}
+.description-content code {
+  background: var(--color-zinc-100);
+  border-radius: 0.25rem;
+  padding: 0 0.25rem;
+}
+.description-content p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--color-zinc-400);
+}
+
+/* Other people's cursors, labelled with their name in their colour. */
+.collaboration-carets__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  word-break: normal;
+  pointer-events: none;
+}
+.collaboration-carets__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  border-radius: 3px 3px 3px 0;
+  padding: 0.1rem 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+  user-select: none;
+}

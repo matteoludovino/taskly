@@ -70,6 +70,8 @@ export class LiveBoard {
   private pingTimer: ReturnType<typeof setInterval> | undefined;
   private pongDeadline: ReturnType<typeof setTimeout> | undefined;
   private focus: Focus | null = null;
+  private binaryListeners = new Set<(data: Uint8Array) => void>();
+  private liveListeners = new Set<() => void>();
 
   constructor(
     private readonly boardId: string,
@@ -113,6 +115,24 @@ export class LiveBoard {
     if (JSON.stringify(focus) === JSON.stringify(this.focus)) return;
     this.focus = focus;
     if (this.state.connection === "live") this.send({ t: "focus", focus });
+  }
+
+  /** Collaborative documents ride the same socket as binary frames. */
+  sendBinary(data: Uint8Array): boolean {
+    if (this.state.connection !== "live" || this.ws?.readyState !== WebSocket.OPEN) return false;
+    this.ws.send(data);
+    return true;
+  }
+
+  onBinary(listener: (data: Uint8Array) => void): () => void {
+    this.binaryListeners.add(listener);
+    return () => this.binaryListeners.delete(listener);
+  }
+
+  /** Called each time a connection is caught up (documents subscribe again then). */
+  onLive(listener: () => void): () => void {
+    this.liveListeners.add(listener);
+    return () => this.liveListeners.delete(listener);
   }
 
   /** Try right now instead of waiting for the next scheduled attempt. */
@@ -169,12 +189,21 @@ export class LiveBoard {
     if (this.stopped) return;
 
     const ws = new WebSocket(url);
+    ws.binaryType = "arraybuffer";
     this.ws = ws;
     ws.onopen = () => {
       this.run(connect(this.state.sync));
       this.pingTimer = setInterval(() => this.ping(), PING_EVERY_MS);
     };
-    ws.onmessage = (event) => this.onMessage(JSON.parse(String(event.data)) as ServerMessage);
+    ws.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) {
+        clearTimeout(this.pongDeadline);
+        const bytes = new Uint8Array(event.data);
+        this.binaryListeners.forEach((listener) => listener(bytes));
+        return;
+      }
+      this.onMessage(JSON.parse(String(event.data)) as ServerMessage);
+    };
     ws.onclose = (event) => this.onClose(ws, event.code);
   }
 
@@ -185,6 +214,7 @@ export class LiveBoard {
       this.attempt = 0;
       this.set({ connection: "live" });
       if (this.focus) this.send({ t: "focus", focus: this.focus });
+      this.liveListeners.forEach((listener) => listener());
     }
     if (message.t === "presence") this.set({ online: message.online, activity: message.activity ?? [] });
     if (hasGap(this.state.sync)) {

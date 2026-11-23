@@ -11,11 +11,14 @@ import {
   type CardState,
   type Focus,
   type Operation,
+  type ParticipantState,
   type Priority,
 } from "@taskly/shared";
 import type { Resolution, TrayItem } from "@/lib/conflicts";
+import type { LiveBoard } from "@/lib/live-board";
 import { PRIORITY_LABEL } from "./card-labels";
 import { CardConflicts } from "./conflict-tray";
+import { DescriptionEditor } from "./description-editor";
 import { InlineEdit } from "./inline-edit";
 
 /**
@@ -27,6 +30,8 @@ export function CardDialog({
   board,
   card,
   others,
+  live,
+  me,
   conflicts,
   onSettle,
   onOp,
@@ -37,6 +42,8 @@ export function CardDialog({
   card: CardState;
   /** Other people on this card right now. */
   others: Activity[];
+  live: LiveBoard | null;
+  me: ParticipantState;
   /** This card's entries in the conflict tray. */
   conflicts: TrayItem[];
   onSettle: (item: TrayItem, resolution: Resolution) => void;
@@ -145,6 +152,13 @@ export function CardDialog({
             />
           </label>
         </div>
+
+        <section className="grid gap-1" aria-labelledby="description-label">
+          <h3 id="description-label" className="text-sm font-medium text-zinc-700">
+            Descrição
+          </h3>
+          {live && <DescriptionEditor live={live} cardId={card.id} me={me} />}
+        </section>
 
         <label className={field}>
           Mover para

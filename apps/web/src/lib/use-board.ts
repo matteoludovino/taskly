@@ -181,5 +181,6 @@ export function useBoard(boardId: string) {
     submit,
     join,
     reconnectNow: () => live?.reconnectNow(),
+    live,
   };
 }

@@ -29,6 +29,12 @@ export function CardFace({ card, lifted = false }: { card: CardState; lifted?: b
             {formatDue(card.dueDate)}
           </span>
         )}
+        {card.descriptionPreview && (
+          <span className="text-zinc-500" title={card.descriptionPreview}>
+            <span aria-hidden>≡</span>
+            <span className="sr-only">Tem descrição</span>
+          </span>
+        )}
       </div>
     </div>
   );

@@ -38,6 +38,7 @@ export function BoardScreen({ boardId }: { boardId: string }) {
     submit,
     join,
     reconnectNow,
+    live,
   } = useBoard(boardId);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
 
@@ -94,6 +95,8 @@ export function BoardScreen({ boardId }: { boardId: string }) {
           board={board}
           card={openCard}
           others={activity.filter((a) => a.cardId === openCard.id)}
+          live={live}
+          me={me}
           conflicts={tray.filter((item) => "cardId" in item && item.cardId === openCard.id)}
           onSettle={settle}
           onOp={submit}
