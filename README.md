@@ -5,7 +5,7 @@ happens; card descriptions are written together, character by character, with ev
 done offline merges back when the connection returns, and the one real conflict (two people changing the
 same field) is left to a person to decide instead of being silently overwritten.
 
-**Live demo:** _coming with the deploy_ · the demo gives you a board of your own, with a simulated
+**Live demo: [taskly-apenas.vercel.app](https://taskly-apenas.vercel.app)** · the demo gives you a board of your own, with a simulated
 teammate who moves cards and writes while you watch (open the link in a second window to see both sides).
 
 ![Two windows on one board: a card dragged in one moves in the other; one person types in a description while the other watches the labelled cursor](docs/media/demo.gif)
